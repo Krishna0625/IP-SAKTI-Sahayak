@@ -1,4 +1,5 @@
 import { ArrowUpRight, Printer, ShieldCheck } from 'lucide-react'
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AppShell } from '../components/layout/AppShell'
 import { demoInnovation, mockEvidence } from '../data/mockData'
@@ -21,6 +22,7 @@ function readInnovation(id: string | undefined): InnovationRecord {
 export function InnovationDetailPage() {
   const { id } = useParams()
   const innovation = readInnovation(id)
+  const [selectedEvidence, setSelectedEvidence] = useState<(typeof mockEvidence)[number] | null>(null)
 
   const handlePrint = () => window.print()
 
@@ -97,7 +99,7 @@ export function InnovationDetailPage() {
                       <span className="mini-chip">{item.relevance}</span>
                       <strong>{item.title}</strong>
                     </div>
-                    <button type="button" className="link-button inline-link">
+                    <button type="button" className="link-button inline-link" onClick={() => setSelectedEvidence(item)}>
                       {item.viewLabel} <ArrowUpRight size={14} />
                     </button>
                   </div>
@@ -119,6 +121,27 @@ export function InnovationDetailPage() {
           </div>
         </section>
       </div>
+
+      {selectedEvidence ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => setSelectedEvidence(null)}>
+          <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="evidence-dialog-title" onClick={(event) => event.stopPropagation()}>
+            <div className="section-head">
+              <div>
+                <p className="eyebrow accent">Evidence detail</p>
+                <h2 id="evidence-dialog-title">{selectedEvidence.title}</h2>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setSelectedEvidence(null)}>Close</button>
+            </div>
+            <div className="meta-row">
+              <span>{selectedEvidence.authority}</span>
+              <span>{selectedEvidence.section}</span>
+              <span>{selectedEvidence.page}</span>
+              <span>Relevance: {selectedEvidence.relevance}</span>
+            </div>
+            <p className="muted-text">This is prototype evidence metadata for review and is not a live source record.</p>
+          </section>
+        </div>
+      ) : null}
     </AppShell>
   )
 }

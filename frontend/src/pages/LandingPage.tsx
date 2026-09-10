@@ -8,7 +8,7 @@ export function LandingPage() {
       <div className="page-grid">
         <section className="hero-panel card-block">
           <div>
-            <p className="eyebrow accent">IP-SAKTI Sahayak</p>
+            <p className="eyebrow accent">MitraAI</p>
             <h2>Innovation passport for Ayurveda IP and regulatory clarity.</h2>
             <p className="lead">
               A prototype workspace for screening product ideas, assessing traditional knowledge relevance,
@@ -52,7 +52,7 @@ export function LandingPage() {
           </div>
           <div className="info-card card-block">
             <Bot size={20} />
-            <h3>AI Sahayak</h3>
+            <h3>MitraAI assistance</h3>
             <p>Evidence-backed guidance for IP and compliance questions.</p>
           </div>
         </section>

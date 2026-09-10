@@ -12,6 +12,8 @@ import { RegulatoryPage } from './pages/RegulatoryPage'
 import { SahayakPage } from './pages/SahayakPage'
 import { SourcesPage } from './pages/SourcesPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { UpdatesPage } from './pages/UpdatesPage'
+import { HelpPage } from './pages/HelpPage'
 
 function App() {
   return (
@@ -28,6 +30,8 @@ function App() {
         <Route path="/regulatory" element={<RegulatoryPage />} />
         <Route path="/sahayak" element={<SahayakPage />} />
         <Route path="/sources" element={<SourcesPage />} />
+        <Route path="/updates" element={<UpdatesPage />} />
+        <Route path="/help" element={<HelpPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

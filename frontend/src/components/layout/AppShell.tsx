@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
+  Activity,
   ArrowRight,
   BookText,
   BriefcaseBusiness,
@@ -22,6 +23,7 @@ type AppShellProps = {
   children: ReactNode
   title?: string
   subtitle?: string
+  showPrototypeLabel?: boolean
 }
 
 type NavItem = {
@@ -40,17 +42,18 @@ const navItems: NavItem[] = [
   { label: 'ABS Assessment', to: '/abs-assessment', icon: BriefcaseBusiness },
   { label: 'Regulatory', to: '/regulatory', icon: Gauge },
   { label: 'Sources', to: '/sources', icon: FolderCog },
+  { label: 'Updates', to: '/updates', icon: Activity },
   { label: 'Settings', to: '/settings', icon: Settings },
 ]
 
-export function AppShell({ children, title, subtitle }: AppShellProps) {
+export function AppShell({ children, title, subtitle, showPrototypeLabel = true }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
 
   const currentPageTitle = useMemo(() => {
     if (title) return title
     const match = navItems.find((item) => item.to === location.pathname)
-    return match?.label ?? 'IP-SAKTI'
+    return match?.label ?? 'MitraAI'
   }, [location.pathname, title])
 
   return (
@@ -59,8 +62,8 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
         <div className="brand-row">
           <div className="brand-mark">IP</div>
           <div>
-            <div className="brand-title">IP-SAKTI</div>
-            <div className="brand-subtitle">Sahayak Platform</div>
+            <div className="brand-title">MitraAI</div>
+            <div className="brand-subtitle">Innovation, IP & Regulatory Intelligence</div>
           </div>
           <button className="sidebar-close" onClick={() => setMobileOpen(false)} aria-label="Close menu">
             <X size={18} />
@@ -80,10 +83,10 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
         </nav>
 
         <nav className="nav-section" aria-label="Workflow navigation">
-          <div className="nav-label">Sahayak</div>
+          <div className="nav-label">MitraAI</div>
           <NavLink to="/sahayak" onClick={() => setMobileOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             <Sparkles size={16} />
-            <span>AI Assistant</span>
+            <span>MitraAI Assistant</span>
           </NavLink>
         </nav>
 
@@ -102,7 +105,7 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
         <nav className="nav-section" aria-label="Assessment navigation">
           <div className="nav-label">Assessment</div>
           {navItems
-            .filter((item) => !['/dashboard', '/sahayak', '/innovation/demo', '/innovation/new', '/'].includes(item.to))
+            .filter((item) => !['/dashboard', '/sahayak', '/innovation/demo', '/innovation/new', '/', '/updates'].includes(item.to))
             .map((item) => {
               const Icon = item.icon
               return (
@@ -121,14 +124,18 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
 
         <div className="sidebar-footer">
           <div className="nav-label">Support</div>
-          <button type="button" className="nav-item ghost-item" aria-label="Help">
+          <NavLink to="/updates" onClick={() => setMobileOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <Activity size={16} />
+            <span>Updates</span>
+          </NavLink>
+          <NavLink to="/help" onClick={() => setMobileOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             <CircleHelp size={16} />
             <span>Help</span>
-          </button>
-          <button type="button" className="nav-item ghost-item" aria-label="Settings">
+          </NavLink>
+          <NavLink to="/settings" onClick={() => setMobileOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             <Settings size={16} />
             <span>Settings</span>
-          </button>
+          </NavLink>
         </div>
       </aside>
 
@@ -139,16 +146,16 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
               <Menu size={18} />
             </button>
             <div>
-              <div className="eyebrow">Prototype</div>
+              {showPrototypeLabel ? <div className="eyebrow">Prototype</div> : null}
               <h1>{currentPageTitle}</h1>
             </div>
           </div>
 
           <div className="topbar-right">
             {subtitle ? <span className="subtitle-label">{subtitle}</span> : null}
-            <button type="button" className="action-button">
+            <NavLink to="/sources" className="action-button">
               Review Portal <ChevronRight size={16} />
-            </button>
+            </NavLink>
           </div>
         </header>
 

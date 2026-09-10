@@ -4,7 +4,8 @@ from functools import lru_cache
 
 from sentence_transformers import SentenceTransformer
 
-MODEL_NAME = 'sentence-transformers/all-MiniLM-L6-v2'
+# Multilingual sentence-transformer for cross-language retrieval.
+MODEL_NAME = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
 
 
 @lru_cache(maxsize=1)

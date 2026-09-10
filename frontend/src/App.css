@@ -433,7 +433,7 @@ h1, h2, h3, h4, p {
   grid-column: span 7;
 }
 
-.assistant-card {
+.next-actions-card {
   grid-column: span 5;
 }
 
@@ -451,6 +451,278 @@ h1, h2, h3, h4, p {
 
 .evidence-mini-card {
   grid-column: span 3;
+}
+
+.dashboard-intro {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.dashboard-intro h2 {
+  margin-top: 4px;
+  font-size: 1.45rem;
+}
+
+.dashboard-metrics {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metric-tile {
+  display: grid;
+  gap: 5px;
+  padding: 15px 16px;
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.metric-tile span,
+.metric-tile small {
+  color: var(--muted);
+}
+
+.metric-tile span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.metric-tile strong {
+  font-size: 1.45rem;
+  color: var(--primary);
+}
+
+.metric-tile small {
+  font-size: 0.76rem;
+}
+
+.passport-id {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.readiness-panel {
+  display: grid;
+  gap: 9px;
+  margin: 22px 0 20px;
+  padding: 15px;
+  background: var(--primary-soft);
+  border: 1px solid rgba(24, 61, 50, 0.12);
+  border-radius: 10px;
+}
+
+.readiness-copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.readiness-copy strong {
+  font-size: 1.35rem;
+  color: var(--primary);
+}
+
+.readiness-copy span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.progress-track {
+  height: 8px;
+  overflow: hidden;
+  background: rgba(24, 61, 50, 0.12);
+  border-radius: 999px;
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  border-radius: inherit;
+}
+
+.assessment-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+}
+
+.assessment-row:last-child {
+  border-bottom: 0;
+}
+
+.assessment-row:hover,
+.assessment-row:focus-visible {
+  background: var(--primary-soft);
+  outline: none;
+}
+
+.assessment-name {
+  font-weight: 600;
+}
+
+.assessment-state {
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.assessment-state.complete {
+  color: var(--success);
+}
+
+.assessment-state.review {
+  color: var(--warning);
+}
+
+.assessment-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.passport-button {
+  width: fit-content;
+  margin-top: 18px;
+}
+
+.accent-icon {
+  color: var(--warning);
+}
+
+.next-action-list {
+  display: grid;
+  gap: 8px;
+}
+
+.next-action-row,
+.action-tile {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.next-action-row {
+  justify-content: space-between;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.next-action-row span {
+  flex: 1;
+  font-weight: 600;
+}
+
+.next-action-row svg:first-child {
+  color: var(--warning);
+}
+
+.next-action-row:hover,
+.next-action-row:focus-visible,
+.action-tile:hover,
+.action-tile:focus-visible {
+  color: var(--primary);
+  outline: none;
+}
+
+.sahayak-helper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.sahayak-helper div {
+  display: grid;
+  gap: 3px;
+}
+
+.sahayak-helper span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.radar-card .list-stack li {
+  position: relative;
+  padding-left: 28px;
+}
+
+.radar-card .list-stack li::before {
+  position: absolute;
+  top: 15px;
+  left: 12px;
+  width: 7px;
+  height: 7px;
+  content: '';
+  background: var(--success);
+  border-radius: 50%;
+}
+
+.radar-card .list-stack li.radar-watch::before {
+  background: var(--warning);
+}
+
+.radar-card .list-stack li.radar-action::before {
+  background: var(--danger);
+}
+
+.radar-card .list-stack li span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.radar-card .list-stack li.radar-watch span {
+  color: var(--warning);
+}
+
+.radar-card .list-stack li.radar-action span {
+  color: var(--danger);
+}
+
+.quick-actions-card .button-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.action-tile {
+  justify-content: space-between;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.action-tile svg:first-child {
+  color: var(--accent);
+}
+
+.action-tile span {
+  flex: 1;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.evidence-mini-card .inline-link {
+  margin-top: 14px;
 }
 
 .passport-meta,
@@ -939,6 +1211,311 @@ h1, h2, h3, h4, p {
   gap: 18px;
 }
 
+.mitraai-workspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.conversation-sidebar {
+  position: sticky;
+  top: 20px;
+  display: grid;
+  gap: 18px;
+  min-height: 520px;
+}
+
+.conversation-heading,
+.mitraai-header,
+.composer-toolbar,
+.answer-card-heading,
+.answer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.conversation-heading h2,
+.mitraai-header h2 {
+  margin-top: 4px;
+  font-size: 1.25rem;
+}
+
+.conversation-group {
+  display: grid;
+  gap: 7px;
+}
+
+.conversation-item,
+.style-button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.conversation-item {
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.conversation-item:hover,
+.conversation-item:focus-visible,
+.conversation-item.active {
+  background: var(--primary-soft);
+  border-color: rgba(24, 61, 50, 0.14);
+  color: var(--primary);
+  outline: none;
+}
+
+.conversation-empty {
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.mitraai-main {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.mitraai-header {
+  padding: 2px 2px 8px;
+}
+
+.context-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  background: var(--primary-soft);
+  border: 1px solid rgba(24, 61, 50, 0.14);
+  border-radius: 10px;
+}
+
+.context-card > span:not(.small-label) {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.prompt-chips,
+.suggested-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 7px;
+}
+
+.conversation-panel {
+  min-height: 440px;
+  padding: 24px;
+}
+
+.mitraai-empty-state {
+  display: grid;
+  place-items: center;
+  gap: 9px;
+  min-height: 390px;
+  text-align: center;
+}
+
+.mitraai-empty-state h2 {
+  max-width: 480px;
+  font-size: 1.4rem;
+}
+
+.mitraai-mark {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border: 1px solid rgba(24, 61, 50, 0.15);
+  border-radius: 50%;
+}
+
+.message-list {
+  display: grid;
+  gap: 16px;
+}
+
+.message {
+  max-width: 92%;
+  padding: 13px 15px;
+  line-height: 1.65;
+}
+
+.message p {
+  margin: 0;
+}
+
+.user-message {
+  justify-self: end;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border: 1px solid rgba(24, 61, 50, 0.12);
+  border-radius: 12px 12px 3px 12px;
+}
+
+.assistant-message {
+  justify-self: start;
+  width: 100%;
+  padding: 0;
+}
+
+.answer-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--primary);
+  border-radius: 10px;
+}
+
+.answer-card-heading {
+  justify-content: flex-start;
+  color: var(--primary);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+}
+
+.answer-copy {
+  color: var(--ink);
+  line-height: 1.7;
+}
+
+.answer-footer {
+  align-items: flex-start;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+
+.confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--success);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.evidence-details,
+.technical-details {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.evidence-details summary,
+.technical-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  list-style: none;
+}
+
+.evidence-details summary::-webkit-details-marker,
+.technical-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.evidence-details .evidence-cards {
+  margin-top: 12px;
+}
+
+.technical-details p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.chat-composer {
+  display: grid;
+  gap: 11px;
+  padding: 15px;
+}
+
+.style-switcher {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.style-button {
+  padding: 5px 9px;
+  border-radius: 5px;
+  font-size: 0.76rem;
+}
+
+.style-button.active,
+.style-button:hover,
+.style-button:focus-visible {
+  background: var(--primary);
+  color: #fff;
+  outline: none;
+}
+
+.composer-row {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
+
+.composer-row textarea {
+  flex: 1;
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+}
+
+.send-button {
+  min-height: 46px;
+  white-space: nowrap;
+}
+
+.composer-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.error-text {
+  color: #9b3e2f;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(20, 31, 27, 0.42);
+}
+
+.modal-panel {
+  width: min(560px, 100%);
+  padding: 24px;
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(20, 31, 27, 0.18);
+}
+
 .answer-header h3 {
   font-size: 1.1rem;
 }
@@ -1070,6 +1647,7 @@ h1, h2, h3, h4, p {
   .hero-panel,
   .three-up,
   .sahayak-layout,
+  .mitraai-workspace,
   .settings-grid,
   .two-column-list,
   .info-grid.two-up,
@@ -1080,6 +1658,33 @@ h1, h2, h3, h4, p {
 
   .dashboard-grid {
     grid-template-columns: 1fr;
+  }
+
+  .conversation-sidebar {
+    position: static;
+    min-height: auto;
+  }
+
+  .conversation-sidebar .conversation-group {
+    display: none;
+  }
+
+  .mitraai-header,
+  .composer-toolbar,
+  .answer-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .composer-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .send-button,
+  .passport-button {
+    width: 100%;
+    justify-content: center;
   }
 
   .passport-card,

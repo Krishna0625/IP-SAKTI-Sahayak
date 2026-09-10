@@ -37,9 +37,9 @@ export function SettingsPage() {
               </select>
             </label>
             <div className="about-box">
-              <h3>About IP-SAKTI</h3>
+              <h3>About MitraAI</h3>
               <p>
-                IP-SAKTI Sahayak is a prototype platform for preliminary Ayurveda IP, traditional knowledge,
+                MitraAI is a prototype platform for preliminary Ayurveda IP, traditional knowledge,
                 and regulatory guidance.
               </p>
             </div>
