@@ -60,7 +60,7 @@ export function AppShell({ children, title, subtitle, showPrototypeLabel = true 
     <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}>
         <div className="brand-row">
-          <div className="brand-mark">IP</div>
+          <div className="brand-mark">M</div>
           <div>
             <div className="brand-title">MitraAI</div>
             <div className="brand-subtitle">Innovation, IP & Regulatory Intelligence</div>

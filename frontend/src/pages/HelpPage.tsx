@@ -22,7 +22,7 @@ export function HelpPage() {
               <p>Some monitoring and assessment records are curated prototype data and are not live government integrations.</p>
             </div>
           </div>
-          <Link to="/sahayak" className="primary-button">Open Sahayak</Link>
+          <Link to="/sahayak" className="primary-button">Open MitraAI Sahayak</Link>
         </section>
       </div>
     </AppShell>

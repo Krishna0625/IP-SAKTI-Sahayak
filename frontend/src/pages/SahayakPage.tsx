@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
-import { Bot, CheckCircle2, ChevronDown, LoaderCircle, Send, ShieldAlert, Sparkles } from 'lucide-react'
+import { Bot, CheckCircle2, ChevronDown, LoaderCircle, Menu, Send, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 import { AppShell } from '../components/layout/AppShell'
 import { demoInnovation } from '../data/mockData'
 
 type ChatSource = { id?: string; title?: string; authority?: string; page?: number | string; section?: string; relevance?: number | string }
 type ChatResponse = { answer: string; confidence: number; key_points: string[]; sources: ChatSource[]; disclaimer: string }
-type ChatMessage = { id: number; role: 'user' | 'assistant'; question?: string; response?: ChatResponse; error?: string }
+type ChatMessage = { id: string; role: 'user' | 'assistant'; question?: string; response?: ChatResponse; error?: string; retryQuestion?: string }
 type Conversation = { id: string; title: string; createdAt: string; messages: ChatMessage[] }
 type AnswerStyle = 'Simple' | 'Detailed' | 'Technical'
 
@@ -36,19 +36,19 @@ export function SahayakPage() {
   const [jurisdiction, setJurisdiction] = useState<'India' | 'International'>('India')
   const [question, setQuestion] = useState('')
   const [answerStyle, setAnswerStyle] = useState<AnswerStyle>('Simple')
-  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(conversationStorageKey) ?? '[]') as Conversation[]
+      return Array.isArray(saved) ? saved : []
+    } catch {
+      return []
+    }
+  })
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(conversationStorageKey) ?? '[]') as Conversation[]
-      if (Array.isArray(saved)) setConversations(saved)
-    } catch {
-      setConversations([])
-    }
-  }, [])
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (conversations.length > 0) localStorage.setItem(conversationStorageKey, JSON.stringify(conversations))
@@ -56,13 +56,18 @@ export function SahayakPage() {
 
   const activeConversation = conversations.find((item) => item.id === activeConversationId)
   const activeMessages = activeConversation?.messages ?? []
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [activeMessages.length, isLoading])
+
   const groupedConversations = useMemo(() => conversations.reduce<Record<string, Conversation[]>>((groups, conversation) => {
     const day = conversationDay(conversation.createdAt)
     groups[day] = [...(groups[day] ?? []), conversation]
     return groups
   }, {}), [conversations])
 
-  const submitQuestion = async (submittedQuestion = question) => {
+  const submitQuestion = async (submittedQuestion = question, retryMessageId?: string) => {
     const trimmedQuestion = submittedQuestion.trim()
     if (!trimmedQuestion || isLoading) return
 
@@ -70,8 +75,9 @@ export function SahayakPage() {
     setError('')
     setIsLoading(true)
     const conversation = activeConversation ?? createConversation(trimmedQuestion)
-    const userMessage: ChatMessage = { id: Date.now(), role: 'user', question: trimmedQuestion }
-    const conversationWithQuestion = { ...conversation, messages: [...conversation.messages, userMessage] }
+    const userMessage: ChatMessage = { id: `user-${conversation.messages.length + 1}`, role: 'user', question: trimmedQuestion }
+    const existingMessages = retryMessageId ? conversation.messages.filter((message) => message.id !== retryMessageId) : conversation.messages
+    const conversationWithQuestion = { ...conversation, messages: [...existingMessages, ...(retryMessageId ? [] : [userMessage])] }
     setConversations((current) => [conversationWithQuestion, ...current.filter((item) => item.id !== conversation.id)])
     setActiveConversationId(conversation.id)
 
@@ -84,13 +90,13 @@ export function SahayakPage() {
       if (!response.ok) throw new Error(`Chat request failed with status ${response.status}`)
       const result = (await response.json()) as ChatResponse
       setConversations((current) => current.map((item) => item.id === conversation.id
-        ? { ...item, messages: [...item.messages, { id: Date.now() + 1, role: 'assistant', response: result }] }
+        ? { ...item, messages: [...item.messages, { id: `assistant-${item.messages.length + 1}`, role: 'assistant', response: result }] }
         : item))
     } catch {
       const friendlyError = 'Unable to connect to MitraAI right now. Please make sure the backend is running.'
       setError(friendlyError)
       setConversations((current) => current.map((item) => item.id === conversation.id
-        ? { ...item, messages: [...item.messages, { id: Date.now() + 1, role: 'assistant', error: friendlyError }] }
+        ? { ...item, messages: [...item.messages, { id: `error-${item.messages.length + 1}`, role: 'assistant', error: friendlyError, retryQuestion: trimmedQuestion }] }
         : item))
     } finally {
       setIsLoading(false)
@@ -107,18 +113,19 @@ export function SahayakPage() {
   return (
     <AppShell title="MitraAI" subtitle="Innovation, IP & Regulatory Intelligence">
       <div className="mitraai-workspace">
-        <aside className="conversation-sidebar card-block">
-          <div className="conversation-heading"><div><p className="eyebrow accent">Conversations</p><h2>History</h2></div><button type="button" className="link-button" onClick={() => { setActiveConversationId(null); setQuestion('') }}>New</button></div>
-          {Object.keys(groupedConversations).length === 0 ? <p className="muted-text conversation-empty">Your conversations will appear here.</p> : Object.entries(groupedConversations).map(([day, items]) => <div key={day} className="conversation-group"><span className="small-label">{day}</span>{items.map((conversation) => <button key={conversation.id} type="button" className={conversation.id === activeConversationId ? 'conversation-item active' : 'conversation-item'} onClick={() => { setActiveConversationId(conversation.id); setError('') }}>{conversation.title}</button>)}</div>)}
+        <aside className={`conversation-sidebar card-block ${historyOpen ? 'history-open' : ''}`}>
+          <div className="conversation-heading"><div><p className="eyebrow accent">MitraAI Sahayak</p><h2>History</h2></div><button type="button" className="link-button" onClick={() => { setActiveConversationId(null); setQuestion(''); setHistoryOpen(false) }}>New</button></div>
+          <div className="history-mobile-heading"><strong>Conversation history</strong><button type="button" className="icon-button" onClick={() => setHistoryOpen(false)} aria-label="Close conversation history"><X size={17} /></button></div>
+          {Object.keys(groupedConversations).length === 0 ? <p className="muted-text conversation-empty">Your conversations will appear here.</p> : Object.entries(groupedConversations).map(([day, items]) => <div key={day} className="conversation-group"><span className="small-label">{day}</span>{items.map((conversation) => <button key={conversation.id} type="button" className={conversation.id === activeConversationId ? 'conversation-item active' : 'conversation-item'} onClick={() => { setActiveConversationId(conversation.id); setError(''); setHistoryOpen(false) }}>{conversation.title}</button>)}</div>)}
         </aside>
 
         <main className="mitraai-main">
-          <section className="mitraai-header"><div><p className="eyebrow accent">MitraAI</p><h2>Innovation, IP & Regulatory Intelligence</h2><p className="muted-text">Clear, evidence-grounded guidance for your innovation journey.</p></div><div className="selector-row" aria-label="Jurisdiction"><button type="button" className={jurisdiction === 'India' ? 'selected-pill active' : 'selected-pill'} onClick={() => setJurisdiction('India')}>India</button><button type="button" className={jurisdiction === 'International' ? 'selected-pill active' : 'selected-pill'} onClick={() => setJurisdiction('International')}>International</button></div></section>
+          <section className="mitraai-header"><div className="header-title-row"><button type="button" className="history-toggle icon-button" onClick={() => setHistoryOpen(true)} aria-label="Open conversation history"><Menu size={18} /></button><div><p className="eyebrow accent">MitraAI Sahayak</p><h2>Innovation, IP & Regulatory Intelligence</h2><p className="muted-text">Evidence-backed assistance for innovation, IP, traditional knowledge, ABS and regulatory questions.</p></div></div><div className="selector-row" aria-label="Jurisdiction"><button type="button" className={jurisdiction === 'India' ? 'selected-pill active' : 'selected-pill'} onClick={() => setJurisdiction('India')}>India</button><button type="button" className={jurisdiction === 'International' ? 'selected-pill active' : 'selected-pill'} onClick={() => setJurisdiction('International')}>International</button></div></section>
  
-          {contextualInnovation ? <section className="context-card"><span className="small-label">You're viewing</span><strong>{contextualInnovation.name}</strong><span>What would you like to understand?</span><div className="prompt-chips">{['Check patent risks', 'Check TK concerns', 'Check ABS requirements', 'Check regulatory requirements'].map((prompt) => <button key={prompt} type="button" className="chip" onClick={() => setQuestion(prompt)}>{prompt}</button>)}</div></section> : null}
+          {contextualInnovation ? <section className="context-card"><span className="small-label">You're reviewing</span><strong>{contextualInnovation.name}</strong><span>{(location.state as { assessment?: string } | null)?.assessment ?? 'Innovation overview'} · What would you like to understand?</span><div className="prompt-chips">{['What does this assessment mean?', 'Why is this relevant to my product?', 'What should I do next?', 'Show relevant evidence'].map((prompt) => <button key={prompt} type="button" className="chip" onClick={() => setQuestion(prompt)}>{prompt}</button>)}</div></section> : null}
 
           <section className="conversation-panel card-block">
-            {activeMessages.length === 0 ? <div className="mitraai-empty-state"><div className="mitraai-mark"><Sparkles size={20} /></div><p className="eyebrow accent">MitraAI</p><h2>Evidence-grounded guidance for your innovation.</h2><p className="muted-text">Ask about IP, Traditional Knowledge, ABS, or regulatory requirements.</p><div className="suggested-prompts">{suggestedPrompts.map((prompt) => <button key={prompt} type="button" className="chip" onClick={() => setQuestion(prompt)}>{prompt}</button>)}</div></div> : <div className="message-list">{activeMessages.map((message) => <div key={message.id} className={message.role === 'user' ? 'message user-message' : 'message assistant-message'}>{message.role === 'user' ? <p>{message.question}</p> : message.error ? <p className="error-text">{message.error}</p> : message.response ? <AnswerCard response={message.response} answerStyle={answerStyle} /> : null}</div>)}{isLoading ? <div className="loading-state"><LoaderCircle className="spinner" size={18} /><span>MitraAI is analyzing the available evidence...</span></div> : null}</div>}
+            {activeMessages.length === 0 ? <div className="mitraai-empty-state"><div className="mitraai-mark"><Sparkles size={20} /></div><p className="eyebrow accent">MitraAI Sahayak</p><h2>Evidence-grounded guidance for your innovation.</h2><p className="muted-text">Ask about IP, Traditional Knowledge, ABS, or regulatory requirements.</p><div className="suggested-prompts">{suggestedPrompts.map((prompt) => <button key={prompt} type="button" className="chip" onClick={() => setQuestion(prompt)}>{prompt}</button>)}</div></div> : <div className="message-list">{activeMessages.map((message) => <div key={message.id} className={message.role === 'user' ? 'exchange user-exchange' : 'exchange assistant-exchange'}>{message.role === 'user' ? <div className="message user-message"><span className="message-label">YOU ASKED</span><p>{message.question}</p></div> : message.error ? <div className="message error-message"><p className="error-text">{message.error}</p><button type="button" className="secondary-button" onClick={() => void submitQuestion(message.retryQuestion ?? '', message.id)} disabled={isLoading}>Try again</button></div> : message.response ? <AnswerCard response={message.response} answerStyle={answerStyle} /> : null}</div>)}{isLoading ? <div className="loading-state"><LoaderCircle className="spinner" size={18} /><span>MitraAI is reviewing the available evidence...</span></div> : null}<div ref={messagesEndRef} /></div>}
           </section>
 
           {error && activeMessages.length === 0 ? <p className="error-text">{error}</p> : null}
