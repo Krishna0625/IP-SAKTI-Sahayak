@@ -4,6 +4,7 @@ import { LandingPage } from './pages/LandingPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { CreateInnovationPage } from './pages/CreateInnovationPage'
 import { InnovationDetailPage } from './pages/InnovationDetailPage'
+import { MyInnovationsPage } from './pages/MyInnovationsPage'
 import { ClassificationPage } from './pages/ClassificationPage'
 import { IpExplorerPage } from './pages/IpExplorerPage'
 import { TkIntelligencePage } from './pages/TkIntelligencePage'
@@ -22,6 +23,7 @@ function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/innovation/new" element={<CreateInnovationPage />} />
+        <Route path="/innovation/demo" element={<MyInnovationsPage />} />
         <Route path="/innovation/:id" element={<InnovationDetailPage />} />
         <Route path="/classification" element={<ClassificationPage />} />
         <Route path="/ip-explorer" element={<IpExplorerPage />} />

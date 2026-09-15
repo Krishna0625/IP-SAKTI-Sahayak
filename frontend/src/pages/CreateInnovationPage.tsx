@@ -70,8 +70,9 @@ export function CreateInnovationPage() {
     setIsAnalyzing(true)
 
     setTimeout(() => {
+      const innovationId = `INV-${Date.now().toString(36).toUpperCase()}`
       const record: InnovationRecord = {
-        id: 'INV-DEMO-001',
+        id: innovationId,
         name: form.name.trim() || demoInnovation.name,
         productType: form.productType,
         ingredients: form.ingredients.trim(),
@@ -88,8 +89,9 @@ export function CreateInnovationPage() {
       const existing = JSON.parse(localStorage.getItem(storageKey) ?? '[]') as InnovationRecord[]
       const nextList = [record, ...existing.filter((item) => item.id !== record.id)]
       localStorage.setItem(storageKey, JSON.stringify(nextList))
+      localStorage.setItem('ip-sakti-active-innovation', innovationId)
       setIsAnalyzing(false)
-      navigate('/innovation/demo')
+      navigate(`/innovation/${innovationId}`)
     }, 1200)
   }
 

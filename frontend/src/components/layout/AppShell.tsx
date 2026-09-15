@@ -34,14 +34,14 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
-  { label: 'AI Assistant', to: '/sahayak', icon: Sparkles },
+  { label: 'AI Sahayak', to: '/sahayak', icon: Sparkles },
   { label: 'My Innovations', to: '/innovation/demo', icon: FolderCog },
   { label: 'Create Innovation', to: '/innovation/new', icon: FileText },
-  { label: 'IP Explorer', to: '/ip-explorer', icon: ShieldCheck },
+  { label: 'IP Screening', to: '/ip-explorer', icon: ShieldCheck },
   { label: 'TK Intelligence', to: '/tk-intelligence', icon: BookText },
   { label: 'ABS Assessment', to: '/abs-assessment', icon: BriefcaseBusiness },
-  { label: 'Regulatory', to: '/regulatory', icon: Gauge },
-  { label: 'Sources', to: '/sources', icon: FolderCog },
+  { label: 'Regulatory Review', to: '/regulatory', icon: Gauge },
+  { label: 'Evidence & Sources', to: '/sources', icon: FolderCog },
   { label: 'Updates', to: '/updates', icon: Activity },
   { label: 'Settings', to: '/settings', icon: Settings },
 ]
@@ -60,9 +60,9 @@ export function AppShell({ children, title, subtitle, showPrototypeLabel = true 
     <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}>
         <div className="brand-row">
-          <div className="brand-mark">M</div>
+          <div className="brand-mark">IP</div>
           <div>
-            <div className="brand-title">MitraAI</div>
+            <div className="brand-title">IP-SAKTI</div>
             <div className="brand-subtitle">Innovation, IP & Regulatory Intelligence</div>
           </div>
           <button className="sidebar-close" onClick={() => setMobileOpen(false)} aria-label="Close menu">
@@ -86,7 +86,7 @@ export function AppShell({ children, title, subtitle, showPrototypeLabel = true 
           <div className="nav-label">MitraAI</div>
           <NavLink to="/sahayak" onClick={() => setMobileOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             <Sparkles size={16} />
-            <span>MitraAI Assistant</span>
+            <span>MitraAI Sahayak</span>
           </NavLink>
         </nav>
 

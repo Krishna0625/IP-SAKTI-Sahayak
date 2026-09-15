@@ -16,7 +16,7 @@ dist/
 
 # Local vector database
 backend/chroma_db/
-
+backend/chroma_db_backup/
 # IDE
 .vscode/
 .idea/

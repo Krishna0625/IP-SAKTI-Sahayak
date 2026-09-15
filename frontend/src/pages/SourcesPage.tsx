@@ -3,12 +3,12 @@ import { sourceRecords } from '../data/mockData'
 
 export function SourcesPage() {
   return (
-    <AppShell title="Sources" subtitle="Demo source library">
+    <AppShell title="Evidence & Sources" subtitle="Demo source library">
       <div className="page-grid narrow-layout">
         <section className="card-block table-card">
           <div className="section-head">
             <div>
-              <p className="eyebrow accent">Source Library</p>
+              <p className="eyebrow accent">Evidence &amp; Sources</p>
               <h2>Demo / Placeholder source records</h2>
             </div>
           </div>

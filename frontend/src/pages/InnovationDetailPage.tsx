@@ -1,6 +1,6 @@
-import { ArrowUpRight, Printer, ShieldCheck } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, Printer, ShieldCheck, Sparkles } from 'lucide-react'
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { AppShell } from '../components/layout/AppShell'
 import { demoInnovation, mockEvidence } from '../data/mockData'
 import type { InnovationRecord } from '../types'
@@ -24,19 +24,30 @@ export function InnovationDetailPage() {
   const innovation = readInnovation(id)
   const [selectedEvidence, setSelectedEvidence] = useState<(typeof mockEvidence)[number] | null>(null)
 
+  if (id) {
+    localStorage.setItem('ip-sakti-active-innovation', id)
+  }
+
   const handlePrint = () => window.print()
+  const workflow = [
+    { label: 'Classification', status: 'Complete', route: '/classification' },
+    { label: 'IP Screening', status: 'Complete', route: '/ip-explorer' },
+    { label: 'TK Assessment', status: 'Review required', route: '/tk-intelligence' },
+    { label: 'ABS Assessment', status: 'Review required', route: '/abs-assessment' },
+    { label: 'Regulatory Review', status: 'Complete', route: '/regulatory' },
+  ]
 
   return (
-    <AppShell title="Innovation Passport" subtitle="Detailed evidence summary">
+    <AppShell title="Innovation Assessment" subtitle="Detailed evidence summary">
       <div className="page-grid detail-layout">
         <section className="card-block passport-full">
           <div className="section-head">
             <div>
-              <p className="eyebrow accent">Innovation Passport</p>
+              <p className="eyebrow accent">Innovation Assessment</p>
               <h2>{innovation.name}</h2>
             </div>
             <button type="button" className="secondary-button" onClick={handlePrint}>
-              <Printer size={16} /> Print Passport
+              <Printer size={16} /> Print Assessment
             </button>
           </div>
 
@@ -44,6 +55,13 @@ export function InnovationDetailPage() {
             <span>{innovation.jurisdiction}</span>
             <span>Readiness {innovation.readiness}%</span>
             <span className="soft-tag">ID {innovation.id}</span>
+          </div>
+
+          <div className="passport-actions">
+            <Link to="/tk-intelligence" className="primary-button">Continue Assessment <ArrowRight size={15} /></Link>
+            <Link to="/sources" className="secondary-button">View Evidence <ArrowUpRight size={15} /></Link>
+            <Link to="/sahayak" state={{ innovation }} className="secondary-button"><Sparkles size={15} /> Ask AI Sahayak</Link>
+            <Link to="/innovation/demo" className="link-button">Back to My Innovations</Link>
           </div>
 
           <div className="info-grid two-up">
@@ -75,6 +93,22 @@ export function InnovationDetailPage() {
             <div className="info-panel">
               <h3>Regulatory Pathway</h3>
               <p>Wellness product classification should be confirmed before claiming specific compliance obligations.</p>
+            </div>
+          </div>
+
+          <div className="assessment-workflow">
+            <h3>Assessment workflow</h3>
+            <div className="workflow-list detail-workflow">
+              {workflow.map((item) => (
+                <Link key={item.label} to={item.route} className={`workflow-step ${item.status === 'Complete' ? 'complete' : 'pending'}`}>
+                  <span className="workflow-number">{item.status === 'Complete' ? '✓' : '!'}</span>
+                  <span>
+                    <strong>{item.label}</strong>
+                    <small>{item.status}</small>
+                  </span>
+                  <ArrowRight size={15} />
+                </Link>
+              ))}
             </div>
           </div>
 
