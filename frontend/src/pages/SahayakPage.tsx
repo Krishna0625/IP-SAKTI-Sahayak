@@ -16,37 +16,19 @@ import {
 import { Link, useLocation } from 'react-router-dom'
 import { AppShell } from '../components/layout/AppShell'
 import { demoInnovation } from '../data/mockData'
+import {
+  sendChatRequest,
+  type ChatLanguage,
+  type ChatResponse,
+  type ChatResponseMode,
+} from '../services/chatApi'
 
-type ResponseMode =
-  | 'simple'
-  | 'detailed'
-  | 'technical'
+type ResponseMode = ChatResponseMode
 
 type AnswerStyle =
   | 'Simple'
   | 'Detailed'
   | 'Technical'
-
-type ChatSource = {
-  evidence_number?: number
-  id?: string
-  title?: string
-  authority?: string
-  jurisdiction?: string
-  domain?: string
-  page?: number | string
-  section?: string
-  relevance?: number | string
-  url?: string
-}
-
-type ChatResponse = {
-  answer: string
-  confidence: number
-  key_points: string[]
-  sources: ChatSource[]
-  disclaimer: string
-}
 
 type ChatMessage = {
   id: string
@@ -231,6 +213,9 @@ export function SahayakPage() {
       'India' | 'International'
     >('India')
 
+  const [language, setLanguage] =
+    useState<ChatLanguage>('en')
+
   const [question, setQuestion] =
     useState('')
 
@@ -402,49 +387,14 @@ export function SahayakPage() {
     )
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'}/api/chat`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type':
-              'application/json',
-          },
-          body: JSON.stringify({
-            query: trimmedQuestion,
-            jurisdiction:
-              jurisdiction.toLowerCase(),
-            language: 'en',
-            response_mode:
-              responseMode,
-          }),
-        },
-      )
-
-      if (!response.ok) {
-        let detail = ''
-
-        try {
-          const errorBody =
-            await response.json()
-
-          detail =
-            typeof errorBody?.detail ===
-            'string'
-              ? errorBody.detail
-              : ''
-        } catch {
-          // Ignore JSON parsing errors.
-        }
-
-        throw new Error(
-          detail ||
-            `Chat request failed with status ${response.status}`,
-        )
-      }
-
-      const result =
-        (await response.json()) as ChatResponse
+      const result = await sendChatRequest({
+        query: trimmedQuestion,
+        jurisdiction: jurisdiction.toLowerCase() as
+          | 'india'
+          | 'international',
+        language,
+        response_mode: responseMode,
+      })
 
       setConversations((current) =>
         current.map((item) =>
@@ -466,13 +416,10 @@ export function SahayakPage() {
         ),
       )
     } catch (requestError) {
-      console.error(
-        'MitraAI chat request failed:',
-        requestError,
-      )
-
       const friendlyError =
-        'Unable to connect to MitraAI right now. Please make sure the backend is running.'
+        requestError instanceof Error
+          ? requestError.message
+          : 'Unable to connect to IP-SAKTI Sahayak. Please try again.'
 
       setError(friendlyError)
 
@@ -721,6 +668,27 @@ export function SahayakPage() {
                   International
                 </button>
               </div>
+
+              <label className="language-control">
+                <span>Language</span>
+                <select
+                  value={language}
+                  onChange={(event) =>
+                    setLanguage(
+                      event.target.value as ChatLanguage,
+                    )
+                  }
+                  aria-label="Response language"
+                >
+                  <option value="en">English</option>
+                  <option value="hi">हिन्दी</option>
+                  <option value="te">తెలుగు</option>
+                  <option value="ta">தமிழ்</option>
+                  <option value="kn">ಕನ್ನಡ</option>
+                  <option value="ml">മലയാളം</option>
+                  <option value="bn">বাংলা</option>
+                </select>
+              </label>
             </div>
           </section>
 

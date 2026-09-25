@@ -1911,6 +1911,23 @@ h1, h2, h3, h4, p {
   flex: 0 0 auto;
 }
 
+.language-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.language-control select {
+  min-height: 34px;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
 .sahayak-status {
   display: inline-flex;
   align-items: center;
