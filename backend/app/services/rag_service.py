@@ -41,7 +41,7 @@ class RAGService:
     def interpret_filters(
         self,
         query: str,
-    ) -> dict[str, str | None]:
+    ) -> dict[str, Any]:
 
         q = query.lower()
 
@@ -175,9 +175,84 @@ class RAGService:
         ):
             domain = "regulatory"
 
+        multi_domains: list[str] = []
+
+        if any(
+            term in q
+            for term in (
+                "geographical indication",
+                "geographical indications",
+            )
+        ):
+            multi_domains.append("gi")
+
+        if any(
+            term in q
+            for term in (
+                "trademark",
+                "trade mark",
+                "brand",
+                "logo",
+            )
+        ):
+            multi_domains.append("trademarks")
+
+        has_tk_concept = any(
+            term in q
+            for term in (
+                "traditional knowledge",
+                "traditional medicine",
+                "tkdl",
+                "traditional use",
+                "traditionally known",
+                "traditional knowledge digital library",
+            )
+        )
+
+        has_abs_concept = any(
+            term in q
+            for term in (
+                "access and benefit sharing",
+                "benefit sharing",
+                "abs",
+            )
+        )
+
+        has_biological_resource_concept = any(
+            term in q
+            for term in (
+                "biological resource",
+                "biological resources",
+                "biodiversity",
+                "national biodiversity authority",
+                "nba",
+            )
+        )
+
+        if has_tk_concept:
+            multi_domains.append("tk")
+
+        if has_abs_concept:
+            multi_domains.append("abs")
+
+        if (
+            has_biological_resource_concept
+            and (has_tk_concept or has_abs_concept)
+        ):
+            multi_domains.append("biodiversity")
+
+        if len(multi_domains) > 1:
+            return {
+                "jurisdiction": jurisdiction,
+                "domain": None,
+                "domains": list(dict.fromkeys(multi_domains)),
+                "source_id": source_id,
+            }
+
         return {
             "jurisdiction": jurisdiction,
             "domain": domain,
+            "domains": [domain] if domain else [],
             "source_id": source_id,
         }
 
@@ -1425,6 +1500,77 @@ class RAGService:
 
         return selected[:max_results]
 
+    def _select_multi_domain_evidence(
+        self,
+        candidates: list[dict[str, Any]],
+        query: str,
+        domains: list[str],
+        max_results: int = 6,
+    ) -> list[dict[str, Any]]:
+        """Select evidence while preserving explicit domain coverage."""
+
+        for item in candidates:
+            item["_ranking_score"] = self._general_ranking_score(
+                item,
+                query,
+                tk_patent_query=False,
+            )
+
+        ranked = sorted(
+            candidates,
+            key=lambda item: float(
+                item.get("_ranking_score") or 0.0
+            ),
+            reverse=True,
+        )
+
+        selected: list[dict[str, Any]] = []
+        selected_keys: set[tuple[Any, Any, str]] = set()
+        source_counts: dict[str, int] = {}
+
+        def evidence_key(item: dict[str, Any]) -> tuple[Any, Any, str]:
+            metadata = item.get("metadata") or {}
+            text = self._normalize_text(str(item.get("text") or ""))
+            return (
+                metadata.get("source_id"),
+                metadata.get("page"),
+                text[:300],
+            )
+
+        def add_item(item: dict[str, Any]) -> None:
+            if len(selected) >= max_results:
+                return
+
+            key = evidence_key(item)
+            if key in selected_keys:
+                return
+
+            metadata = item.get("metadata") or {}
+            source_id = str(metadata.get("source_id") or "__unknown__")
+            if source_counts.get(source_id, 0) >= 2:
+                return
+
+            selected.append(item)
+            selected_keys.add(key)
+            source_counts[source_id] = source_counts.get(source_id, 0) + 1
+
+        for domain in domains:
+            for item in ranked:
+                metadata = item.get("metadata") or {}
+                if metadata.get("domain") == domain:
+                    before = len(selected)
+                    add_item(item)
+                    if len(selected) > before:
+                        break
+
+        for item in ranked:
+            add_item(item)
+
+        for item in selected:
+            item.pop("_ranking_score", None)
+
+        return selected[:max_results]
+
     # ==============================================================
     # GENERAL RANKING
     # ==============================================================
@@ -1555,6 +1701,15 @@ class RAGService:
             "domain"
         )
 
+        domains = [
+            str(item)
+            for item in (filters.get("domains") or [])
+            if item
+        ]
+
+        if not domains and domain:
+            domains = [str(domain)]
+
         is_tk_patent_query = (
             self._is_traditional_knowledge_patent_query(
                 query
@@ -1571,11 +1726,61 @@ class RAGService:
             tuple[str, str | None]
         ] = []
 
+        if len(domains) > 1:
+            for selected_domain in domains:
+                if selected_domain == "gi":
+                    retrieval_jobs.extend(
+                        [
+                            (query, "gi"),
+                            (
+                                f"{query} geographical indication GI Act India",
+                                "gi",
+                            ),
+                        ]
+                    )
+                elif selected_domain == "trademarks":
+                    retrieval_jobs.extend(
+                        [
+                            (query, "trademarks"),
+                            (f"{query} trademark India", "trademarks"),
+                        ]
+                    )
+                elif selected_domain == "tk":
+                    retrieval_jobs.extend(
+                        [
+                            (query, "tk"),
+                            (
+                                "traditional knowledge TKDL prior art India",
+                                "tk",
+                            ),
+                        ]
+                    )
+                elif selected_domain == "abs":
+                    retrieval_jobs.extend(
+                        [
+                            (query, "abs"),
+                            (
+                                "biological resources access benefit sharing India requirements",
+                                "abs",
+                            ),
+                        ]
+                    )
+                elif selected_domain == "biodiversity":
+                    retrieval_jobs.extend(
+                        [
+                            (query, "biodiversity"),
+                            (
+                                "National Biodiversity Authority biological resources benefit sharing India",
+                                "biodiversity",
+                            ),
+                        ]
+                    )
+
         # ==========================================================
         # TK + PATENT QUERY
         # ==========================================================
 
-        if is_tk_patent_query:
+        elif is_tk_patent_query:
 
             retrieval_jobs = [
                 (
@@ -1970,7 +2175,16 @@ class RAGService:
         # FINAL PRECISION SELECTION
         # ==============================================================
 
-        if is_tk_patent_query:
+        if len(domains) > 1:
+
+            final_results = self._select_multi_domain_evidence(
+                candidates=candidates,
+                query=query,
+                domains=domains,
+                max_results=6,
+            )
+
+        elif is_tk_patent_query:
 
             final_results = (
                 self._select_tk_patent_evidence(
