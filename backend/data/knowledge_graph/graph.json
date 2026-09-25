@@ -1,0 +1,38 @@
+{
+  "entities": [
+    {"id": "ayurvedic_product", "name": "Ayurvedic Product", "type": "category", "aliases": ["ayurvedic formulation", "ayurveda"]},
+    {"id": "classical_medicine", "name": "Classical Medicine", "type": "category", "aliases": ["classical medicine"]},
+    {"id": "proprietary_medicine", "name": "Proprietary Medicine", "type": "category", "aliases": ["proprietary medicine"]},
+    {"id": "new_drug", "name": "New Drug", "type": "category", "aliases": ["new drug"]},
+    {"id": "phytopharmaceutical", "name": "Phytopharmaceutical", "type": "category", "aliases": ["phytopharmaceutical"]},
+    {"id": "ayurveda_aahar", "name": "Ayurveda-Aahar", "type": "category", "aliases": ["ayurveda aahar", "nutraceutical"]},
+    {"id": "cosmetic", "name": "Cosmetic", "type": "category", "aliases": ["cosmetic"]},
+    {"id": "patent", "name": "Patent", "type": "ip_right", "aliases": ["patentability", "patent application"]},
+    {"id": "trademark", "name": "Trademark", "type": "ip_right", "aliases": ["trade mark", "brand"]},
+    {"id": "copyright", "name": "Copyright", "type": "ip_right", "aliases": ["copyright"]},
+    {"id": "geographical_indication", "name": "Geographical Indication", "type": "ip_right", "aliases": ["geographical indication", "gi"]},
+    {"id": "traditional_knowledge", "name": "Traditional Knowledge", "type": "knowledge", "aliases": ["traditional knowledge", "traditional medicine", "tk"]},
+    {"id": "tkdl", "name": "TKDL", "type": "resource", "aliases": ["traditional knowledge digital library"]},
+    {"id": "biological_resource", "name": "Biological Resource", "type": "resource", "aliases": ["biological resource", "biological material"]},
+    {"id": "abs", "name": "ABS", "type": "compliance", "aliases": ["access and benefit sharing", "benefit sharing"]},
+    {"id": "patent_act", "name": "Patents Act", "type": "law", "aliases": ["patents act", "patent law"]},
+    {"id": "biodiversity_act", "name": "Biological Diversity Act", "type": "law", "aliases": ["biodiversity act", "biological diversity"]},
+    {"id": "ip_india", "name": "IP India", "type": "authority", "aliases": ["ip india", "indian patent office"]},
+    {"id": "wipo", "name": "WIPO", "type": "authority", "aliases": ["wipo"]},
+    {"id": "patentability", "name": "Patentability", "type": "concept", "aliases": ["patentability", "novelty", "inventive step"]},
+    {"id": "prior_art", "name": "Prior Art", "type": "concept", "aliases": ["prior art"]}
+  ],
+  "relationships": [
+    {"source": "ayurvedic_product", "relation": "classified_as", "target": "classical_medicine"},
+    {"source": "ayurvedic_product", "relation": "classified_as", "target": "proprietary_medicine"},
+    {"source": "ayurvedic_product", "relation": "may_involve", "target": "traditional_knowledge"},
+    {"source": "traditional_knowledge", "relation": "documented_by", "target": "tkdl"},
+    {"source": "patent", "relation": "governed_by", "target": "patent_act"},
+    {"source": "traditional_knowledge", "relation": "relevant_to", "target": "patentability"},
+    {"source": "patent", "relation": "requires_review_of", "target": "prior_art"},
+    {"source": "biological_resource", "relation": "may_trigger", "target": "abs"},
+    {"source": "abs", "relation": "governed_by", "target": "biodiversity_act"},
+    {"source": "patent", "relation": "administered_by", "target": "ip_india"},
+    {"source": "patent", "relation": "administered_by", "target": "wipo"}
+  ]
+}
