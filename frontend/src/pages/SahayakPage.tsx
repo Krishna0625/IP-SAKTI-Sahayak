@@ -15,20 +15,19 @@ import {
 } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { AppShell } from '../components/layout/AppShell'
+import './sahayak-overrides.css'
 import { demoInnovation } from '../data/mockData'
 import {
   sendChatRequest,
+  type ChatGenerationStatus,
   type ChatLanguage,
   type ChatResponse,
   type ChatResponseMode,
 } from '../services/chatApi'
 
 type ResponseMode = ChatResponseMode
-
-type AnswerStyle =
-  | 'Simple'
-  | 'Detailed'
-  | 'Technical'
+type AnswerStyle = 'Simple' | 'Detailed' | 'Technical'
+type Jurisdiction = 'India' | 'International'
 
 type ChatMessage = {
   id: string
@@ -38,17 +37,33 @@ type ChatMessage = {
   error?: string
   retryQuestion?: string
   responseMode?: ResponseMode
+  errorKind?: ErrorKind
 }
 
 type Conversation = {
   id: string
   title: string
   createdAt: string
+  jurisdiction?: Jurisdiction
+  language?: ChatLanguage
+  answerStyle?: AnswerStyle
   messages: ChatMessage[]
 }
 
-const conversationStorageKey =
-  'mitraai-conversations'
+type Preferences = {
+  jurisdiction: Jurisdiction
+  language: ChatLanguage
+  answerStyle: AnswerStyle
+}
+
+type ErrorKind =
+  | 'temporary'
+  | 'rate-limit'
+  | 'configuration'
+  | 'general'
+
+const conversationStorageKey = 'mitraai-conversations'
+const preferenceStorageKey = 'mitraai-preferences'
 
 const suggestedPrompts = [
   {
@@ -78,17 +93,91 @@ const suggestedPrompts = [
   },
 ]
 
+const contextPrompts = [
+  'What does this assessment mean?',
+  'Why is this relevant to my product?',
+  'What should I do next?',
+  'Show relevant evidence',
+]
+
+const languageLabels: Record<ChatLanguage, string> = {
+  en: 'English',
+  hi: 'हिन्दी',
+  te: 'తెలుగు',
+  ta: 'தமிழ்',
+  kn: 'ಕನ್ನಡ',
+  ml: 'മലയാളം',
+  bn: 'বাংলা',
+}
+
+function readSavedPreferences(): Preferences {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem(preferenceStorageKey) ?? 'null',
+    ) as {
+      jurisdiction?: string
+      language?: string
+      answerStyle?: string
+    } | null
+
+    const jurisdiction: Jurisdiction =
+      saved?.jurisdiction === 'International'
+        ? 'International'
+        : 'India'
+
+    const validLanguages: ChatLanguage[] = [
+      'en',
+      'hi',
+      'te',
+      'ta',
+      'kn',
+      'ml',
+      'bn',
+    ]
+
+    const language: ChatLanguage = validLanguages.includes(
+      saved?.language as ChatLanguage,
+    )
+      ? (saved?.language as ChatLanguage)
+      : 'en'
+
+    const answerStyle: AnswerStyle =
+      saved?.answerStyle === 'Detailed'
+        ? 'Detailed'
+        : saved?.answerStyle === 'Technical'
+          ? 'Technical'
+          : 'Simple'
+
+    return {
+      jurisdiction,
+      language,
+      answerStyle,
+    }
+  } catch {
+    return {
+      jurisdiction: 'India',
+      language: 'en',
+      answerStyle: 'Simple',
+    }
+  }
+}
+
 function createConversation(
   question: string,
+  context: Preferences,
 ): Conversation {
   return {
-    id: `${Date.now()}`,
+    id: `${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`,
     title:
       question.length > 46
         ? `${question.slice(0, 46)}...`
         : question,
-    createdAt:
-      new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    jurisdiction: context.jurisdiction,
+    language: context.language,
+    answerStyle: context.answerStyle,
     messages: [],
   }
 }
@@ -106,11 +195,10 @@ function conversationDay(
     ) / 86400000,
   )
 
-  return difference === 0
-    ? 'Today'
-    : difference === 1
-      ? 'Yesterday'
-      : 'Earlier'
+  if (difference === 0) return 'Today'
+  if (difference === 1) return 'Yesterday'
+
+  return 'Earlier'
 }
 
 function answerStyleToResponseMode(
@@ -148,14 +236,9 @@ function responseModeLabel(
 function formatDomain(
   domain?: string,
 ): string | null {
-  if (!domain) {
-    return null
-  }
+  if (!domain) return null
 
-  const labels: Record<
-    string,
-    string
-  > = {
+  const labels: Record<string, string> = {
     patents: 'Patents',
     tk: 'Traditional Knowledge',
     abs: 'ABS',
@@ -168,7 +251,7 @@ function formatDomain(
   return (
     labels[domain.toLowerCase()] ??
     domain
-      .replace(/[_-]+/g, ' ')
+      .replace(/[-_]+/g, ' ')
       .replace(/\b\w/g, (char) =>
         char.toUpperCase(),
       )
@@ -178,14 +261,9 @@ function formatDomain(
 function formatJurisdiction(
   jurisdiction?: string,
 ): string | null {
-  if (!jurisdiction) {
-    return null
-  }
+  if (!jurisdiction) return null
 
-  if (
-    jurisdiction.toLowerCase() ===
-    'india'
-  ) {
+  if (jurisdiction.toLowerCase() === 'india') {
     return 'India'
   }
 
@@ -199,28 +277,150 @@ function formatJurisdiction(
   return jurisdiction
 }
 
+function formatGenerationModel(
+  model?: string | null,
+): string | null {
+  if (!model) return null
+
+  const normalized = model
+    .replace(/^models\//, '')
+    .trim()
+
+  if (!normalized) return null
+
+  const labels: Record<string, string> = {
+    'gemini-3.8-flash': 'Gemini 3.8 Flash',
+    'gemini-3.7-flash': 'Gemini 3.7 Flash',
+  }
+
+  return labels[normalized] ?? normalized
+}
+
+function generationStatusLabel(
+  status?: ChatGenerationStatus,
+): string {
+  switch (status) {
+    case 'gemini':
+      return 'AI + evidence'
+
+    case 'gemini_fallback':
+      return 'AI fallback + evidence'
+
+    case 'evidence_fallback':
+      return 'Evidence-grounded fallback'
+
+    case 'rag_only':
+      return 'Evidence-only response'
+
+    default:
+      return 'Evidence-grounded'
+  }
+}
+
+function generationStatusClass(
+  status?: ChatGenerationStatus,
+): string {
+  switch (status) {
+    case 'gemini':
+      return 'generation-status generation-status-success'
+
+    case 'gemini_fallback':
+      return 'generation-status generation-status-fallback'
+
+    case 'evidence_fallback':
+      return 'generation-status generation-status-warning'
+
+    case 'rag_only':
+      return 'generation-status generation-status-neutral'
+
+    default:
+      return 'generation-status generation-status-neutral'
+  }
+}
+
+function classifyError(error: unknown): {
+  kind: ErrorKind
+  message: string
+} {
+  const raw =
+    error instanceof Error
+      ? error.message
+      : String(error ?? '')
+
+  const normalized = raw.toLowerCase()
+
+  if (
+    normalized.includes('429') ||
+    normalized.includes('rate limit') ||
+    normalized.includes('resource_exhausted') ||
+    normalized.includes('quota')
+  ) {
+    return {
+      kind: 'rate-limit',
+      message:
+        'The MitraAI request limit has been reached. Please try again later.',
+    }
+  }
+
+  if (
+    normalized.includes('503') ||
+    normalized.includes('service unavailable') ||
+    normalized.includes(
+      'temporarily unavailable',
+    ) ||
+    normalized.includes('high demand') ||
+    normalized.includes('overloaded')
+  ) {
+    return {
+      kind: 'temporary',
+      message:
+        'The AI service is temporarily unavailable because of high demand. Please try again in a moment.',
+    }
+  }
+
+  if (
+    normalized.includes('401') ||
+    normalized.includes('403') ||
+    normalized.includes('api key') ||
+    normalized.includes('authentication')
+  ) {
+    return {
+      kind: 'configuration',
+      message:
+        'The AI service could not be reached with the current configuration.',
+    }
+  }
+
+  return {
+    kind: 'general',
+    message:
+      'We could not generate a response right now. Please try again.',
+  }
+}
+
 export function SahayakPage() {
   const location = useLocation()
 
-  const contextualInnovation = (
-    location.state as {
-      innovation?: typeof demoInnovation
-    } | null
-  )?.innovation
+  const locationState = location.state as {
+    innovation?: typeof demoInnovation
+    assessment?: string
+  } | null
 
-  const [jurisdiction, setJurisdiction] =
-    useState<
-      'India' | 'International'
-    >('India')
+  const contextualInnovation =
+    locationState?.innovation
 
-  const [language, setLanguage] =
-    useState<ChatLanguage>('en')
+  const [preferences, setPreferences] =
+    useState<Preferences>(() =>
+      readSavedPreferences(),
+    )
 
-  const [question, setQuestion] =
-    useState('')
+  const {
+    jurisdiction,
+    language,
+    answerStyle,
+  } = preferences
 
-  const [answerStyle, setAnswerStyle] =
-    useState<AnswerStyle>('Simple')
+  const [question, setQuestion] = useState('')
 
   const [conversations, setConversations] =
     useState<Conversation[]>(() => {
@@ -239,10 +439,8 @@ export function SahayakPage() {
       }
     })
 
-  const [
-    activeConversationId,
-    setActiveConversationId,
-  ] = useState<string | null>(null)
+  const [activeConversationId, setActiveConversationId] =
+    useState<string | null>(null)
 
   const [isLoading, setIsLoading] =
     useState(false)
@@ -259,63 +457,93 @@ export function SahayakPage() {
     useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (conversations.length > 0) {
-      localStorage.setItem(
-        conversationStorageKey,
-        JSON.stringify(conversations),
-      )
-    }
+    localStorage.setItem(
+      conversationStorageKey,
+      JSON.stringify(conversations),
+    )
   }, [conversations])
+
+  useEffect(() => {
+    localStorage.setItem(
+      preferenceStorageKey,
+      JSON.stringify(preferences),
+    )
+  }, [preferences])
 
   const activeConversation =
     conversations.find(
       (item) =>
-        item.id ===
-        activeConversationId,
+        item.id === activeConversationId,
     )
 
   const activeMessages =
     activeConversation?.messages ?? []
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView(
-      {
-        behavior: 'smooth',
-        block: 'nearest',
-      },
-    )
-  }, [
-    activeMessages.length,
-    isLoading,
-  ])
+    messagesEndRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+    })
+  }, [activeMessages.length, isLoading])
 
   const groupedConversations = useMemo(
     () =>
       conversations.reduce<
-        Record<
-          string,
-          Conversation[]
-        >
-      >(
-        (
-          groups,
+        Record<string, Conversation[]>
+      >((groups, conversation) => {
+        const day = conversationDay(
+          conversation.createdAt,
+        )
+
+        groups[day] = [
+          ...(groups[day] ?? []),
           conversation,
-        ) => {
-          const day = conversationDay(
-            conversation.createdAt,
-          )
+        ]
 
-          groups[day] = [
-            ...(groups[day] ?? []),
-            conversation,
-          ]
-
-          return groups
-        },
-        {},
-      ),
+        return groups
+      }, {}),
     [conversations],
   )
+
+  const updatePreferences = (
+    changes: Partial<Preferences>,
+  ) => {
+    setPreferences((current) => ({
+      ...current,
+      ...changes,
+    }))
+
+    if (activeConversationId) {
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id ===
+          activeConversationId
+            ? {
+                ...conversation,
+                ...(changes.jurisdiction
+                  ? {
+                      jurisdiction:
+                        changes.jurisdiction,
+                    }
+                  : {}),
+                ...(changes.language
+                  ? {
+                      language:
+                        changes.language,
+                    }
+                  : {}),
+                ...(changes.answerStyle
+                  ? {
+                      answerStyle:
+                        changes.answerStyle,
+                    }
+                  : {}),
+              }
+            : conversation,
+        ),
+      )
+    }
+  }
 
   const submitQuestion = async (
     submittedQuestion = question,
@@ -324,10 +552,7 @@ export function SahayakPage() {
     const trimmedQuestion =
       submittedQuestion.trim()
 
-    if (
-      !trimmedQuestion ||
-      isLoading
-    ) {
+    if (!trimmedQuestion || isLoading) {
       return
     }
 
@@ -339,11 +564,12 @@ export function SahayakPage() {
       activeConversation ??
       createConversation(
         trimmedQuestion,
+        preferences,
       )
 
     const responseMode =
       answerStyleToResponseMode(
-        answerStyle,
+        preferences.answerStyle,
       )
 
     const userMessage: ChatMessage = {
@@ -357,14 +583,18 @@ export function SahayakPage() {
       retryMessageId
         ? conversation.messages.filter(
             (message) =>
-              message.id !==
-              retryMessageId,
+              message.id !== retryMessageId,
           )
         : conversation.messages
 
-    const conversationWithQuestion =
+    const conversationWithQuestion: Conversation =
       {
         ...conversation,
+        jurisdiction:
+          preferences.jurisdiction,
+        language: preferences.language,
+        answerStyle:
+          preferences.answerStyle,
         messages: [
           ...existingMessages,
           ...(retryMessageId
@@ -376,9 +606,7 @@ export function SahayakPage() {
     setConversations((current) => [
       conversationWithQuestion,
       ...current.filter(
-        (item) =>
-          item.id !==
-          conversation.id,
+        (item) => item.id !== conversation.id,
       ),
     ])
 
@@ -389,17 +617,18 @@ export function SahayakPage() {
     try {
       const result = await sendChatRequest({
         query: trimmedQuestion,
-        jurisdiction: jurisdiction.toLowerCase() as
-          | 'india'
-          | 'international',
-        language,
+        jurisdiction:
+          preferences.jurisdiction.toLowerCase() as
+            | 'india'
+            | 'international',
+        language:
+          preferences.language,
         response_mode: responseMode,
       })
 
       setConversations((current) =>
         current.map((item) =>
-          item.id ===
-          conversation.id
+          item.id === conversation.id
             ? {
                 ...item,
                 messages: [
@@ -416,17 +645,14 @@ export function SahayakPage() {
         ),
       )
     } catch (requestError) {
-      const friendlyError =
-        requestError instanceof Error
-          ? requestError.message
-          : 'Unable to connect to IP-SAKTI Sahayak. Please try again.'
+      const classified =
+        classifyError(requestError)
 
-      setError(friendlyError)
+      setError(classified.message)
 
       setConversations((current) =>
         current.map((item) =>
-          item.id ===
-          conversation.id
+          item.id === conversation.id
             ? {
                 ...item,
                 messages: [
@@ -435,10 +661,12 @@ export function SahayakPage() {
                     id: `error-${item.messages.length + 1}`,
                     role: 'assistant',
                     error:
-                      friendlyError,
+                      classified.message,
                     retryQuestion:
                       trimmedQuestion,
                     responseMode,
+                    errorKind:
+                      classified.kind,
                   },
                 ],
               }
@@ -467,9 +695,44 @@ export function SahayakPage() {
   ) => {
     setQuestion(prompt)
 
-    requestAnimationFrame(() =>
-      questionInputRef.current?.focus(),
+    requestAnimationFrame(() => {
+      questionInputRef.current?.focus()
+    })
+  }
+
+  const startNewConversation = () => {
+    setActiveConversationId(null)
+    setQuestion('')
+    setError('')
+    setHistoryOpen(false)
+
+    requestAnimationFrame(() => {
+      questionInputRef.current?.focus()
+    })
+  }
+
+  const openConversation = (
+    conversation: Conversation,
+  ) => {
+    setActiveConversationId(
+      conversation.id,
     )
+
+    setPreferences((current) => ({
+      ...current,
+      jurisdiction:
+        conversation.jurisdiction ??
+        current.jurisdiction,
+      language:
+        conversation.language ??
+        current.language,
+      answerStyle:
+        conversation.answerStyle ??
+        current.answerStyle,
+    }))
+
+    setError('')
+    setHistoryOpen(false)
   }
 
   return (
@@ -488,26 +751,21 @@ export function SahayakPage() {
           <div className="conversation-heading">
             <div>
               <p className="eyebrow accent">
-                MitraAI Sahayak
+                Conversations
               </p>
 
-              <h2>
-                Conversations
-              </h2>
+              <h2>Your chats</h2>
             </div>
 
             <button
               type="button"
-              className="link-button history-new-button"
-              onClick={() => {
-                setActiveConversationId(
-                  null,
-                )
-                setQuestion('')
-                setHistoryOpen(false)
-              }}
+              className="new-chat-button"
+              onClick={
+                startNewConversation
+              }
             >
-              + New
+              <Sparkles size={15} />
+              New Chat
             </button>
           </div>
 
@@ -528,24 +786,24 @@ export function SahayakPage() {
             </button>
           </div>
 
-          {Object.keys(
-            groupedConversations,
-          ).length === 0 ? (
-            <div className="conversation-empty">
-              <strong>
-                No conversations yet
-              </strong>
-
-              <p>
-                Ask your first question
-                to begin.
-              </p>
-            </div>
-          ) : (
-            Object.entries(
+          <div className="conversation-list">
+            {Object.keys(
               groupedConversations,
-            ).map(
-              ([day, items]) => (
+            ).length === 0 ? (
+              <div className="conversation-empty">
+                <strong>
+                  No conversations yet
+                </strong>
+
+                <p>
+                  Start a new conversation
+                  from the workspace.
+                </p>
+              </div>
+            ) : (
+              Object.entries(
+                groupedConversations,
+              ).map(([day, items]) => (
                 <div
                   key={day}
                   className="conversation-group"
@@ -567,15 +825,14 @@ export function SahayakPage() {
                             ? 'conversation-item active'
                             : 'conversation-item'
                         }
-                        onClick={() => {
-                          setActiveConversationId(
-                            conversation.id,
+                        onClick={() =>
+                          openConversation(
+                            conversation,
                           )
-                          setError('')
-                          setHistoryOpen(
-                            false,
-                          )
-                        }}
+                        }
+                        title={
+                          conversation.title
+                        }
                       >
                         {
                           conversation.title
@@ -584,9 +841,9 @@ export function SahayakPage() {
                     ),
                   )}
                 </div>
-              ),
-            )
-          )}
+              ))
+            )}
+          </div>
         </aside>
 
         <main className="mitraai-main">
@@ -607,7 +864,7 @@ export function SahayakPage() {
 
               <div>
                 <p className="eyebrow accent">
-                  MitraAI Sahayak
+                  AI assistant
                 </p>
 
                 <h2>
@@ -615,124 +872,207 @@ export function SahayakPage() {
                 </h2>
 
                 <p className="muted-text">
-                  Evidence-backed guidance
-                  for Ayurveda IP,
-                  Traditional Knowledge,
-                  ABS and regulatory
-                  questions.
+                  Evidence-grounded guidance
+                  for Ayurveda IP, Traditional
+                  Knowledge, ABS and
+                  regulatory questions.
                 </p>
               </div>
             </div>
 
-            <div className="sahayak-header-controls">
+            <div className="sahayak-context-panel">
               <div className="sahayak-status">
                 <span className="status-dot" />
-                Evidence-grounded AI
+                Evidence-grounded
               </div>
 
-              <div
-                className="selector-row"
-                aria-label="Jurisdiction"
-              >
-                <button
-                  type="button"
-                  className={
-                    jurisdiction ===
-                    'India'
-                      ? 'selected-pill active'
-                      : 'selected-pill'
-                  }
-                  onClick={() =>
-                    setJurisdiction(
-                      'India',
-                    )
-                  }
-                >
-                  India
-                </button>
+              <div className="context-control">
+                <span className="small-label">
+                  Jurisdiction
+                </span>
 
-                <button
-                  type="button"
-                  className={
-                    jurisdiction ===
-                    'International'
-                      ? 'selected-pill active'
-                      : 'selected-pill'
-                  }
-                  onClick={() =>
-                    setJurisdiction(
-                      'International',
-                    )
-                  }
+                <div
+                  className="selector-row"
+                  aria-label="Jurisdiction"
                 >
-                  International
-                </button>
+                  <button
+                    type="button"
+                    className={
+                      jurisdiction === 'India'
+                        ? 'selected-pill active'
+                        : 'selected-pill'
+                    }
+                    onClick={() =>
+                      updatePreferences({
+                        jurisdiction:
+                          'India',
+                      })
+                    }
+                  >
+                    India
+                  </button>
+
+                  <button
+                    type="button"
+                    className={
+                      jurisdiction ===
+                      'International'
+                        ? 'selected-pill active'
+                        : 'selected-pill'
+                    }
+                    onClick={() =>
+                      updatePreferences({
+                        jurisdiction:
+                          'International',
+                      })
+                    }
+                  >
+                    International
+                  </button>
+                </div>
               </div>
 
               <label className="language-control">
                 <span>Language</span>
+
                 <select
                   value={language}
                   onChange={(event) =>
-                    setLanguage(
-                      event.target.value as ChatLanguage,
-                    )
+                    updatePreferences({
+                      language:
+                        event.target.value as ChatLanguage,
+                    })
                   }
                   aria-label="Response language"
                 >
-                  <option value="en">English</option>
-                  <option value="hi">हिन्दी</option>
-                  <option value="te">తెలుగు</option>
-                  <option value="ta">தமிழ்</option>
-                  <option value="kn">ಕನ್ನಡ</option>
-                  <option value="ml">മലയാളം</option>
-                  <option value="bn">বাংলা</option>
+                  <option value="en">
+                    English
+                  </option>
+                  <option value="hi">
+                    हिन्दी
+                  </option>
+                  <option value="te">
+                    తెలుగు
+                  </option>
+                  <option value="ta">
+                    தமிழ்
+                  </option>
+                  <option value="kn">
+                    ಕನ್ನಡ
+                  </option>
+                  <option value="ml">
+                    മലയാളം
+                  </option>
+                  <option value="bn">
+                    বাংলা
+                  </option>
                 </select>
               </label>
+
+              <div className="answer-style-control context-answer-style">
+                <span className="small-label">
+                  Answer style
+                </span>
+
+                <div className="style-switcher">
+                  {(
+                    [
+                      'Simple',
+                      'Detailed',
+                      'Technical',
+                    ] as AnswerStyle[]
+                  ).map((style) => (
+                    <button
+                      key={style}
+                      type="button"
+                      className={
+                        answerStyle ===
+                        style
+                          ? 'style-button active'
+                          : 'style-button'
+                      }
+                      onClick={() =>
+                        updatePreferences({
+                          answerStyle:
+                            style,
+                        })
+                      }
+                    >
+                      {style}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </section>
 
+          {activeConversation ? (
+            <div className="conversation-context-strip">
+              <span className="context-strip-label">
+                Conversation context
+              </span>
+
+              <span className="context-strip-pill">
+                {activeConversation.jurisdiction ??
+                  jurisdiction}
+              </span>
+
+              <span className="context-strip-pill">
+                {languageLabels[
+                  activeConversation.language ??
+                    language
+                ]}
+              </span>
+
+              <span className="context-strip-pill">
+                {activeConversation.answerStyle ??
+                  answerStyle}
+              </span>
+            </div>
+          ) : null}
+
           {contextualInnovation ? (
             <section className="context-card">
-              <span className="small-label">
-                You're reviewing
-              </span>
+              <div className="context-heading">
+                <span className="context-icon">
+                  <Sparkles size={16} />
+                </span>
 
-              <strong>
-                {
-                  contextualInnovation.name
-                }
-              </strong>
+                <div>
+                  <span className="small-label">
+                    Reviewing this innovation
+                  </span>
 
-              <span>
-                {(
-                  location.state as {
-                    assessment?: string
-                  } | null
-                )?.assessment ??
-                  'Innovation overview'}{' '}
-                · What would you like to
-                understand?
-              </span>
+                  <strong>
+                    {
+                      contextualInnovation.name
+                    }
+                  </strong>
+                </div>
+              </div>
+
+              <p>
+                {locationState?.assessment ??
+                  'Innovation overview'}
+              </p>
 
               <div className="prompt-chips">
-                {[
-                  'What does this assessment mean?',
-                  'Why is this relevant to my product?',
-                  'What should I do next?',
-                  'Show relevant evidence',
-                ].map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    className="chip starter-prompt"
-                    onClick={() =>
-                      selectPrompt(prompt)
-                    }
-                  >
-                    {prompt}
-                  </button>
-                ))}
+                {contextPrompts.map(
+                  (prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      className="chip"
+                      onClick={() =>
+                        selectPrompt(
+                          prompt,
+                        )
+                      }
+                    >
+                      {prompt}
+                    </button>
+                  ),
+                )}
               </div>
             </section>
           ) : null}
@@ -742,27 +1082,40 @@ export function SahayakPage() {
             0 ? (
               <div className="mitraai-empty-state">
                 <div className="mitraai-mark">
-                  <Sparkles size={20} />
+                  <Sparkles size={21} />
                 </div>
 
                 <p className="eyebrow accent">
-                  MitraAI Sahayak
+                  Start a new conversation
                 </p>
 
                 <h2>
-                  Ask about your Ayurvedic
-                  innovation, IP protection,
-                  Traditional Knowledge,
-                  ABS or regulatory
-                  requirements.
+                  How can MitraAI help?
                 </h2>
 
-                <p className="muted-text">
-                  Choose a question to
-                  begin an
-                  evidence-grounded
-                  conversation.
+                <p className="muted-text empty-state-copy">
+                  Choose your context above,
+                  then ask about patents,
+                  Traditional Knowledge,
+                  ABS, regulation or IP
+                  strategy.
                 </p>
+
+                <div className="empty-context-summary">
+                  <span>
+                    {jurisdiction}
+                  </span>
+
+                  <span>
+                    {languageLabels[
+                      language
+                    ]}
+                  </span>
+
+                  <span>
+                    {answerStyle}
+                  </span>
+                </div>
 
                 <div className="suggested-prompts">
                   {suggestedPrompts.map(
@@ -772,7 +1125,7 @@ export function SahayakPage() {
                           prompt.question
                         }
                         type="button"
-                        className="chip starter-prompt"
+                        className="starter-prompt"
                         onClick={() =>
                           void submitQuestion(
                             prompt.question,
@@ -780,11 +1133,15 @@ export function SahayakPage() {
                         }
                       >
                         <span className="starter-category">
-                          {prompt.category}
+                          {
+                            prompt.category
+                          }
                         </span>
 
                         <span>
-                          {prompt.question}
+                          {
+                            prompt.question
+                          }
                         </span>
                       </button>
                     ),
@@ -819,24 +1176,48 @@ export function SahayakPage() {
 
                           {message.responseMode ? (
                             <span className="message-mode-label">
-                              {responseModeLabel(
-                                message.responseMode,
-                              )}{' '}
-                              response
+                              {
+                                responseModeLabel(
+                                  message.responseMode,
+                                )
+                              }{' '}
+                              answer
                             </span>
                           ) : null}
                         </div>
                       ) : message.error ? (
-                        <div className="message error-message">
-                          <p className="error-text">
-                            We couldn't generate
-                            a response right
-                            now.
-                          </p>
+                        <div
+                          className={`message error-message error-${
+                            message.errorKind ??
+                            'general'
+                          }`}
+                        >
+                          <div className="error-message-copy">
+                            <div className="error-title-row">
+                              <ShieldAlert
+                                size={17}
+                              />
 
-                          <p className="muted-text">
-                            Please try again.
-                          </p>
+                              <strong>
+                                {message.errorKind ===
+                                'rate-limit'
+                                  ? 'MitraAI request limit reached'
+                                  : message.errorKind ===
+                                      'temporary'
+                                    ? 'MitraAI is temporarily unavailable'
+                                    : message.errorKind ===
+                                        'configuration'
+                                      ? 'MitraAI service unavailable'
+                                      : 'We could not generate an answer'}
+                              </strong>
+                            </div>
+
+                            <p>
+                              {
+                                message.error
+                              }
+                            </p>
+                          </div>
 
                           <button
                             type="button"
@@ -852,7 +1233,7 @@ export function SahayakPage() {
                               isLoading
                             }
                           >
-                            Retry
+                            Try again
                           </button>
                         </div>
                       ) : message.response ? (
@@ -874,21 +1255,27 @@ export function SahayakPage() {
                 )}
 
                 {isLoading ? (
-                  <div className="loading-state">
+                  <div
+                    className="loading-state"
+                    aria-live="polite"
+                  >
                     <LoaderCircle
                       className="spinner"
                       size={18}
                     />
 
                     <span>
-                      MitraAI is reviewing the
-                      available evidence...
+                      MitraAI is reviewing
+                      the available
+                      evidence...
                     </span>
                   </div>
                 ) : null}
 
                 <div
-                  ref={messagesEndRef}
+                  ref={
+                    messagesEndRef
+                  }
                 />
               </div>
             )}
@@ -896,46 +1283,61 @@ export function SahayakPage() {
 
           {error &&
           activeMessages.length === 0 ? (
-            <p className="error-text">
-              {error}
-            </p>
+            <div
+              className="error-banner"
+              role="alert"
+            >
+              <ShieldAlert size={16} />
+              <span>{error}</span>
+
+              <button
+                type="button"
+                className="error-banner-retry"
+                onClick={() =>
+                  void submitQuestion()
+                }
+                disabled={isLoading}
+              >
+                Try again
+              </button>
+            </div>
           ) : null}
 
           <section className="chat-composer card-block">
             <div className="composer-toolbar">
-              <span className="small-label">
-                Answer style
-              </span>
+              <div>
+                <span className="composer-title">
+                  Ask your question
+                </span>
 
-              <div className="style-switcher">
-                {[
-                  'Simple',
-                  'Detailed',
-                  'Technical',
-                ].map((style) => (
-                  <button
-                    key={style}
-                    type="button"
-                    className={
-                      answerStyle === style
-                        ? 'style-button active'
-                        : 'style-button'
-                    }
-                    onClick={() =>
-                      setAnswerStyle(
-                        style as AnswerStyle,
-                      )
-                    }
-                  >
-                    {style}
-                  </button>
-                ))}
+                <span className="composer-hint">
+                  Press Enter to send · Shift
+                  + Enter for a new line
+                </span>
+              </div>
+
+              <div className="composer-context">
+                <span>
+                  {jurisdiction}
+                </span>
+
+                <span>
+                  {languageLabels[
+                    language
+                  ]}
+                </span>
+
+                <span>
+                  {answerStyle}
+                </span>
               </div>
             </div>
 
             <div className="composer-row">
               <textarea
-                ref={questionInputRef}
+                ref={
+                  questionInputRef
+                }
                 value={question}
                 onChange={(event) =>
                   setQuestion(
@@ -946,8 +1348,9 @@ export function SahayakPage() {
                   handleInputKeyDown
                 }
                 rows={2}
-                placeholder="Ask about IP, Traditional Knowledge, ABS or regulatory requirements..."
+                placeholder="Ask about patents, Traditional Knowledge, ABS, regulation..."
                 aria-label="Ask MitraAI"
+                disabled={isLoading}
               />
 
               <button
@@ -972,23 +1375,67 @@ export function SahayakPage() {
 
                 <span>
                   {isLoading
-                    ? 'Analyzing'
+                    ? 'Analyzing...'
                     : 'Ask MitraAI'}
                 </span>
               </button>
             </div>
 
             <p className="composer-note">
-              Information provided by
-              MitraAI Sahayak is for
-              preliminary guidance and
-              does not constitute legal
-              advice.
+              MitraAI provides preliminary
+              information and does not replace
+              professional legal advice.
             </p>
           </section>
         </main>
       </div>
     </AppShell>
+  )
+}
+
+function GenerationStatus({
+  response,
+}: {
+  response: ChatResponse
+}) {
+  const modelLabel = formatGenerationModel(
+    response.generation_model,
+  )
+
+  const statusLabel =
+    generationStatusLabel(
+      response.generation_status,
+    )
+
+  return (
+    <div className="generation-status-wrap">
+      <span
+        className={generationStatusClass(
+          response.generation_status,
+        )}
+      >
+        <Sparkles size={12} />
+
+        <span>{statusLabel}</span>
+      </span>
+
+      {modelLabel ? (
+        <span className="generation-model-label">
+          {modelLabel}
+        </span>
+      ) : null}
+
+      {response.generation_note ? (
+        <span
+          className="generation-note"
+          title={
+            response.generation_note
+          }
+        >
+          {response.generation_note}
+        </span>
+      ) : null}
+    </div>
   )
 }
 
@@ -1001,27 +1448,42 @@ function AnswerCard({
 }) {
   const keyPoints =
     answerStyle === 'Simple'
-      ? response.key_points.slice(
-          0,
-          3,
-        )
-      : response.key_points.slice(
-          0,
-          5,
-        )
+      ? response.key_points.slice(0, 3)
+      : response.key_points.slice(0, 5)
 
   return (
     <div className="answer-card">
       <div className="answer-card-heading">
-        <Bot size={18} />
+        <span className="answer-brand">
+          <Bot size={17} />
+          <strong>MitraAI</strong>
+        </span>
 
-        <strong>
-          MITRAAI SAHAYAK
-        </strong>
+        <div className="answer-heading-meta">
+          <span className="answer-style-badge">
+            {answerStyle} answer
+          </span>
+
+          <GenerationStatus
+            response={response}
+          />
+        </div>
       </div>
 
+      {response.generation_note ? (
+        <div className="generation-note-panel">
+          <Sparkles size={14} />
+
+          <span>
+            {response.generation_note}
+          </span>
+        </div>
+      ) : null}
+
       <div className="answer-section direct-answer-section">
-        <h4>DIRECT ANSWER</h4>
+        <span className="answer-section-label">
+          Direct answer
+        </span>
 
         <div className="answer-copy markdown-answer">
           <ReactMarkdown
@@ -1060,9 +1522,7 @@ function AnswerCard({
                   {children}
                 </blockquote>
               ),
-              code: ({
-                children,
-              }) => (
+              code: ({ children }) => (
                 <code>{children}</code>
               ),
             }}
@@ -1073,44 +1533,42 @@ function AnswerCard({
       </div>
 
       {keyPoints.length > 0 ? (
-        <div className="answer-section">
-          <h4>KEY TAKEAWAYS</h4>
+        <div className="answer-section takeaway-section">
+          <span className="answer-section-label">
+            Key takeaways
+          </span>
 
           <ul className="takeaway-list">
-            {keyPoints.map(
-              (item) => (
-                <li key={item}>
-                  {item}
-                </li>
-              ),
-            )}
+            {keyPoints.map((item) => (
+              <li key={item}>
+                <CheckCircle2 size={15} />
+                <span>{item}</span>
+              </li>
+            ))}
           </ul>
         </div>
       ) : null}
 
       {response.sources.length > 0 ? (
-        <details
-          className="evidence-details"
-          open
-        >
+        <details className="evidence-details">
           <summary>
             <span>
-              EVIDENCE ·{' '}
-              {response.sources.length}{' '}
-              SOURCES
+              Evidence &amp; sources
+              <small>
+                {response.sources.length}{' '}
+                {response.sources.length ===
+                1
+                  ? 'source'
+                  : 'sources'}
+              </small>
             </span>
 
-            <ChevronDown
-              size={16}
-            />
+            <ChevronDown size={17} />
           </summary>
 
           <div className="evidence-cards">
             {response.sources.map(
-              (
-                source,
-                index,
-              ) => {
+              (source, index) => {
                 const evidenceNumber =
                   source.evidence_number ??
                   index + 1
@@ -1127,16 +1585,16 @@ function AnswerCard({
 
                 return (
                   <article
-                    key={`${source.evidence_number ?? 'source'}-${source.id ?? source.title ?? index}`}
+                    key={`${source.evidence_number ?? 'source'}-${
+                      source.id ??
+                      source.title ??
+                      index
+                    }`}
                     className="evidence-card-mini"
                   >
-                    {/* ------------------------------------------------
-                        Card header
-                    ------------------------------------------------- */}
-
                     <div className="evidence-card-top">
                       <span className="evidence-number">
-                        EVIDENCE{' '}
+                        Source{' '}
                         {evidenceNumber}
                       </span>
 
@@ -1144,14 +1602,9 @@ function AnswerCard({
                         <CheckCircle2
                           size={13}
                         />
-
-                        KNOWLEDGE BASE SOURCE
+                        Knowledge base
                       </span>
                     </div>
-
-                    {/* ------------------------------------------------
-                        Title
-                    ------------------------------------------------- */}
 
                     <div className="evidence-card-title-block">
                       <strong className="evidence-title">
@@ -1161,20 +1614,18 @@ function AnswerCard({
 
                       {source.authority ? (
                         <span className="evidence-authority">
-                          {source.authority}
+                          {
+                            source.authority
+                          }
                         </span>
                       ) : null}
                     </div>
-
-                    {/* ------------------------------------------------
-                        Metadata
-                    ------------------------------------------------- */}
 
                     <div className="evidence-meta-row">
                       {source.section ? (
                         <span className="evidence-meta-item">
                           <span className="evidence-meta-label">
-                            PROVISION
+                            Provision
                           </span>
 
                           <span>
@@ -1186,16 +1637,18 @@ function AnswerCard({
                       ) : null}
 
                       {source.page !==
-                      undefined &&
+                        undefined &&
                       source.page !==
                         null ? (
                         <span className="evidence-meta-item">
                           <span className="evidence-meta-label">
-                            PAGE
+                            Page
                           </span>
 
                           <span>
-                            {source.page}
+                            {
+                              source.page
+                            }
                           </span>
                         </span>
                       ) : null}
@@ -1215,10 +1668,6 @@ function AnswerCard({
                       ) : null}
                     </div>
 
-                    {/* ------------------------------------------------
-                        Official source
-                    ------------------------------------------------- */}
-
                     {source.url ? (
                       <a
                         href={
@@ -1229,7 +1678,8 @@ function AnswerCard({
                         className="evidence-source-link"
                       >
                         <span>
-                          View official source
+                          View official
+                          source
                         </span>
 
                         <ExternalLink
@@ -1244,45 +1694,50 @@ function AnswerCard({
           </div>
         </details>
       ) : (
-        <p className="empty-state">
-          Reliable evidence was not
-          found in the available
-          knowledge base.
-        </p>
+        <div className="evidence-empty">
+          <ShieldAlert size={16} />
+
+          <span>
+            No supporting evidence was
+            found in the available
+            knowledge base.
+          </span>
+        </div>
       )}
 
       <div className="answer-footer">
-        <span className="confidence-badge">
+        <div className="confidence-badge">
           <CheckCircle2 size={15} />
 
-          Confidence{' '}
-          {Math.round(
-            response.confidence * 100,
-          )}
-          %
+          <span>
+            {Math.round(
+              response.confidence * 100,
+            )}
+            % confidence
+          </span>
 
           <small>
-            Retrieved evidence quality
+            Based on retrieved evidence
           </small>
-        </span>
+        </div>
 
         <div className="answer-footer-actions">
           <Link
             to="/sources"
             className="link-button"
           >
-            View Evidence
+            View all evidence
           </Link>
-
-          <div className="disclaimer-box warn-box">
-            <ShieldAlert size={15} />
-
-            <p>
-              {response.disclaimer ||
-                'This information is not legal advice.'}
-            </p>
-          </div>
         </div>
+      </div>
+
+      <div className="disclaimer-box warn-box">
+        <ShieldAlert size={15} />
+
+        <p>
+          {response.disclaimer ||
+            'This information is not legal advice.'}
+        </p>
       </div>
     </div>
   )

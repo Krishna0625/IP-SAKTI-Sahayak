@@ -10,6 +10,14 @@ class CitationService:
 
     Evidence numbers remain aligned with the final evidence order
     passed to Gemini and displayed by the frontend.
+
+    Citation labels are intentionally conservative:
+    - Exact statutory provisions are shown only when supported by
+      the retrieved evidence text.
+    - Descriptive labels are used when the evidence clearly supports
+      a topic but does not expose an exact provision number.
+    - Metadata section values are not trusted unless the evidence
+      text itself supports them.
     """
 
     def __init__(self) -> None:
@@ -24,12 +32,16 @@ class CitationService:
         """
         Clean known source-title spelling/capitalization issues.
         """
-        original = str(title or "Official document").strip()
+        original = str(
+            title or "Official document"
+        ).strip()
 
         if not original:
             return "Official document"
 
-        normalized = " ".join(original.split())
+        normalized = " ".join(
+            original.split()
+        )
 
         known_titles = {
             "tkdl traditional knowlage information":
@@ -87,6 +99,7 @@ class CitationService:
             "\t": " ",
             "–": "-",
             "—": "-",
+            "−": "-",
         }
 
         for old, new in replacements.items():
@@ -120,16 +133,111 @@ class CitationService:
         )
 
     # ==============================================================
+    # METADATA SECTION SUPPORT
+    # ==============================================================
+
+    @staticmethod
+    def _metadata_section_supported_by_text(
+        metadata_section: str,
+        normalized_text: str,
+    ) -> bool:
+        """
+        Return True only when the metadata section/reference is
+        actually supported by the retrieved evidence text.
+
+        This prevents metadata such as "Section 5" or "Section 134"
+        from being displayed when the evidence chunk itself does not
+        contain or support that provision.
+        """
+        value = str(
+            metadata_section or ""
+        ).strip()
+
+        if not value:
+            return False
+
+        normalized_section = value.lower()
+
+        # ----------------------------------------------------------
+        # Exact Section references.
+        # ----------------------------------------------------------
+        section_matches = re.findall(
+            r"\bsection\s+\d+[a-z]?(?:\s*\([a-z0-9]+\))*",
+            normalized_section,
+            flags=re.IGNORECASE,
+        )
+
+        for section_reference in section_matches:
+            if self._has_explicit_section(
+                normalized_text,
+                rf"\b{re.escape(section_reference)}\b",
+            ):
+                return True
+
+        # ----------------------------------------------------------
+        # Generic named provisions.
+        # ----------------------------------------------------------
+        cleaned = re.sub(
+            r"\s+",
+            " ",
+            normalized_section,
+        ).strip()
+
+        if cleaned in normalized_text:
+            return True
+
+        # ----------------------------------------------------------
+        # Split combined labels such as:
+        # "Form 2 / Section 10 / Rule 13"
+        # ----------------------------------------------------------
+        components = [
+            part.strip()
+            for part in re.split(
+                r"\s*/\s*",
+                cleaned,
+            )
+            if part.strip()
+        ]
+
+        if components:
+            supported_components = 0
+
+            for component in components:
+                component = component.strip()
+
+                if component in {
+                    "form 2",
+                    "complete specification",
+                    "rule 13",
+                    "section 10",
+                    "section 11b",
+                    "section 12",
+                    "section 13",
+                    "section 3(p)",
+                    "section 6",
+                }:
+                    if component in normalized_text:
+                        supported_components += 1
+
+            if supported_components == len(components):
+                return True
+
+        return False
+
+    # ==============================================================
     # MEANINGFUL PROVISION EXTRACTION
     # ==============================================================
 
-    def extract_section(self, text: str) -> str | None:
+    def extract_section(
+        self,
+        text: str,
+    ) -> str | None:
         """
         Extract the most meaningful legal provision/reference
         supported by the retrieved evidence text.
 
         Exact provision numbers are returned only when the evidence
-        text explicitly supports them. Otherwise, descriptive labels
+        text explicitly supports them. Otherwise descriptive labels
         are used.
         """
         if not text:
@@ -138,13 +246,47 @@ class CitationService:
         normalized = self._normalize_text(text)
 
         # ==========================================================
-        # 1. TRADITIONAL KNOWLEDGE / SECTION 3(P)
+        # 1. PERSONS ENTITLED TO APPLY / SECTION 6
+        # ==========================================================
+
+        if self._has_explicit_section(
+            normalized,
+            r"\bsection\s+6\b",
+        ):
+            if (
+                "true and first inventor" in normalized
+                or "true and first inventors" in normalized
+                or "person claiming to be the true and first inventor"
+                in normalized
+                or "assignee of such person" in normalized
+                or "legal representative of any deceased person"
+                in normalized
+                or "persons entitled to apply" in normalized
+            ):
+                return "Section 6"
+
+        # The exact section heading may not survive OCR, but the
+        # evidence may still clearly describe the applicant entitlement.
+        if (
+            (
+                "true and first inventor" in normalized
+                or "true and first inventors" in normalized
+            )
+            and (
+                "assignee" in normalized
+                or "legal representative" in normalized
+            )
+        ):
+            return "Persons entitled to apply"
+
+        # ==========================================================
+        # 2. TRADITIONAL KNOWLEDGE / SECTION 3(P)
         # ==========================================================
 
         explicit_section_3p = (
             self._has_explicit_section(
                 normalized,
-                r"\bsection\s*3\s*\(\s*p\s*\)",
+                r"\bsection\s+3\s*\(\s*p\s*\)",
             )
             or self._has_explicit_section(
                 normalized,
@@ -155,8 +297,6 @@ class CitationService:
         if explicit_section_3p:
             return "Section 3(p)"
 
-        # Strong textual evidence for Section 3(p), even if OCR
-        # removed the literal section heading.
         if (
             "invention which, in effect, is traditional knowledge"
             in normalized
@@ -173,7 +313,93 @@ class CitationService:
             return "Traditional Knowledge / Section 3(p)"
 
         # ==========================================================
-        # 2. SOURCE / GEOGRAPHICAL ORIGIN
+        # 3. REQUEST FOR EXAMINATION / SECTION 11B
+        # ==========================================================
+
+        if self._has_explicit_section(
+            normalized,
+            r"\bsection\s+11\s*b\b",
+        ):
+            if (
+                "request for examination" in normalized
+                or "request for examination of application"
+                in normalized
+            ):
+                return "Section 11B"
+
+        if (
+            "request for examination" in normalized
+            or
+            "request for examination of the application"
+            in normalized
+        ):
+            return "Request for examination"
+
+        if (
+            "treated as withdrawn" in normalized
+            and (
+                "request for examination" in normalized
+                or "examined" in normalized
+            )
+        ):
+            return "Request for examination"
+
+        # ==========================================================
+        # 4. EXAMINATION / SECTION 12
+        # ==========================================================
+
+        if self._has_explicit_section(
+            normalized,
+            r"\bsection\s+12\b",
+        ):
+            if (
+                "examination" in normalized
+                or "examiner" in normalized
+                or "controller" in normalized
+            ):
+                return "Section 12"
+
+        if (
+            "examiner shall make a report" in normalized
+            or
+            "examiner shall examine" in normalized
+            or
+            (
+                "examination of the application" in normalized
+                and "examiner" in normalized
+            )
+        ):
+            return "Examination of application"
+
+        # ==========================================================
+        # 5. ANTICIPATION / PREVIOUS PUBLICATION / SECTION 13
+        # ==========================================================
+
+        if self._has_explicit_section(
+            normalized,
+            r"\bsection\s+13\b",
+        ):
+            if (
+                "previous publication" in normalized
+                or "prior claim" in normalized
+                or "anticipation" in normalized
+                or "search for anticipation" in normalized
+            ):
+                return "Section 13"
+
+        if (
+            "search for anticipation" in normalized
+            or
+            "previous publication" in normalized
+            or
+            "previously published" in normalized
+            or
+            "prior claim" in normalized
+        ):
+            return "Anticipation / prior publication"
+
+        # ==========================================================
+        # 6. SOURCE / GEOGRAPHICAL ORIGIN
         # ==========================================================
 
         biological_origin_signals = (
@@ -187,18 +413,12 @@ class CitationService:
             signal in normalized
             for signal in biological_origin_signals
         ):
-            # Only show Section 10(4)(D) if the text explicitly
-            # identifies Section 10(4)(D).
             if self._has_explicit_section(
                 normalized,
-                r"\bsection\s*10\s*\(\s*4\s*\)\s*\(\s*d\s*\)",
+                r"\bsection\s+10\s*\(\s*4\s*\)\s*\(\s*d\s*\)",
             ):
                 return "Section 10(4)(D)"
 
-            # OCR/PDF extraction may preserve "(D)" but omit
-            # the section heading. In that case use a descriptive
-            # label instead of pretending the exact provision was
-            # explicitly present.
             if re.search(
                 r"\(\s*d\s*\)\s*disclose\s+the\s+source\s+and\s+"
                 r"geographical\s+origin",
@@ -207,11 +427,16 @@ class CitationService:
             ):
                 return "Source / geographical origin disclosure"
 
-            if "disclose the source and geographical origin" in normalized:
+            if (
+                "disclose the source and geographical origin"
+                in normalized
+            ):
                 return "Source / geographical origin disclosure"
 
+            return "Source / geographical origin"
+
         # ==========================================================
-        # 3. BUDAPEST TREATY / BIOLOGICAL MATERIAL DEPOSIT
+        # 7. BUDAPEST TREATY / BIOLOGICAL MATERIAL DEPOSIT
         # ==========================================================
 
         if (
@@ -219,26 +444,22 @@ class CitationService:
             and "deposit" in normalized
             and "biological material" in normalized
         ):
-            # Exact section only when explicitly present.
             if self._has_explicit_section(
                 normalized,
-                r"\bsection\s*10\s*\(\s*4\s*\)\s*\(\s*a\s*\)",
+                r"\bsection\s+10\s*\(\s*4\s*\)\s*\(\s*a\s*\)",
             ):
                 return "Section 10(4)(A)"
 
             if self._has_explicit_section(
                 normalized,
-                r"\bsection\s*10\s*\(\s*4\s*\)",
+                r"\bsection\s+10\s*\(\s*4\s*\)",
             ):
                 return "Section 10(4)"
-
-            if "not later than the date of filing" in normalized:
-                return "Budapest Treaty / biological material deposit"
 
             return "Budapest Treaty / biological material deposit"
 
         # ==========================================================
-        # 4. FORM 2 / COMPLETE SPECIFICATION
+        # 8. FORM 2 / COMPLETE SPECIFICATION
         # ==========================================================
 
         if (
@@ -246,16 +467,13 @@ class CitationService:
             and "complete specification" in normalized
         ):
             has_rule_13 = (
-                "rule13" in normalized
-                or "rule 13" in normalized
+                "rule 13" in normalized
+                or "rule13" in normalized
             )
 
-            # Form 2 itself commonly includes the explicit
-            # "See section 10 and rule 13" wording. Only label
-            # the exact provision when that wording exists.
             has_section_10 = self._has_explicit_section(
                 normalized,
-                r"\bsection\s*10\b",
+                r"\bsection\s+10\b",
             )
 
             if has_rule_13 and has_section_10:
@@ -270,7 +488,7 @@ class CitationService:
             return "Form 2 / Complete Specification"
 
         # ==========================================================
-        # 5. COMPLETE SPECIFICATION / CLAIMS
+        # 9. COMPLETE SPECIFICATION / CLAIMS
         # ==========================================================
 
         if (
@@ -279,7 +497,7 @@ class CitationService:
         ):
             if self._has_explicit_section(
                 normalized,
-                r"\bsection\s*10\b",
+                r"\bsection\s+10\b",
             ):
                 return "Section 10"
 
@@ -295,7 +513,7 @@ class CitationService:
             return "Complete Specification"
 
         # ==========================================================
-        # 6. SOURCE / ORIGIN AS A REVOCATION GROUND
+        # 10. SOURCE / ORIGIN AS A REVOCATION GROUND
         # ==========================================================
 
         if (
@@ -305,17 +523,18 @@ class CitationService:
             "does not disclose or wrongly mentions the source"
             in normalized
         ):
-            # Exact section only if explicitly visible.
             if self._has_explicit_section(
                 normalized,
-                r"\bsection\s*64\s*\(\s*1\s*\)\s*\(\s*j\s*\)",
+                r"\bsection\s+64\s*\(\s*1\s*\)\s*\(\s*j\s*\)",
             ):
                 return "Section 64(1)(j)"
 
-            return "Source / geographical origin as revocation ground"
+            return (
+                "Source / geographical origin as revocation ground"
+            )
 
         # ==========================================================
-        # 7. INVENTIVE STEP / OBVIOUSNESS
+        # 11. INVENTIVE STEP / OBVIOUSNESS
         # ==========================================================
 
         if (
@@ -328,47 +547,44 @@ class CitationService:
         ):
             if self._has_explicit_section(
                 normalized,
-                r"\bsection\s*64\s*\(\s*1\s*\)\s*\(\s*e\s*\)",
+                r"\bsection\s+64\s*\(\s*1\s*\)\s*\(\s*e\s*\)",
             ):
                 return "Section 64(1)(e)"
 
             if self._has_explicit_section(
                 normalized,
-                r"\bsection\s*2\s*\(\s*1\s*\)\s*\(\s*ja\s*\)",
+                r"\bsection\s+2\s*\(\s*1\s*\)\s*\(\s*ja\s*\)",
             ):
                 return "Section 2(1)(ja)"
 
             return "Inventive Step / Obviousness"
 
         # ==========================================================
-        # 8. SECTION 8 DISCLOSURE
+        # 12. SECTION 8 DISCLOSURE
         # ==========================================================
 
         if (
-            "information required by section 8"
-            in normalized
+            "information required by section 8" in normalized
             or
             (
-                "failed to disclose to the controller"
-                in normalized
-                and
-                "section 8" in normalized
+                "failed to disclose to the controller" in normalized
+                and "section 8" in normalized
             )
         ):
             if self._has_explicit_section(
                 normalized,
-                r"\bsection\s*64\s*\(\s*1\s*\)\s*\(\s*h\s*\)",
+                r"\bsection\s+64\s*\(\s*1\s*\)\s*\(\s*h\s*\)",
             ):
                 return "Section 64(1)(h)"
 
             return "Section 8 disclosure"
 
         # ==========================================================
-        # 9. GENERIC SECTION / ARTICLE / RULE / CLAUSE
+        # 13. GENERIC SECTION / ARTICLE / RULE / CLAUSE
         # ==========================================================
 
         patterns = [
-            r"\bsection\s+\d+(?:\s*\(\s*[a-z0-9]+\s*\))*",
+            r"\bsection\s+\d+[a-z]?(?:\s*\(\s*[a-z0-9]+\s*\))*",
             r"\barticle\s+[a-z0-9.-]+",
             r"\brule\s+[a-z0-9.-]+",
             r"\bclause\s+[a-z0-9.-]+",
@@ -431,34 +647,52 @@ class CitationService:
         Convert one evidence item into a citation/source entry.
 
         Content-aware extraction is preferred over generic metadata
-        section values when the evidence text gives a supported
-        provision or descriptive citation label.
-        """
+        section values.
 
+        A metadata section is used only when the retrieved evidence
+        text itself supports that same reference.
+        """
         metadata = item.get("metadata") or {}
 
         text = str(
-            item.get("text") or ""
+            item.get("text")
+            or item.get("content")
+            or item.get("document")
+            or ""
         )
+
+        normalized_text = self._normalize_text(text)
 
         metadata_section = str(
             metadata.get("section") or ""
         ).strip()
 
-        # Prefer what the evidence text actually supports.
-        extracted_section = self.extract_section(text)
-
-        section = (
-            extracted_section
-            or metadata_section
+        extracted_section = self.extract_section(
+            text
         )
+
+        if extracted_section:
+            section = extracted_section
+        elif (
+            metadata_section
+            and normalized_text
+            and self._metadata_section_supported_by_text(
+                metadata_section,
+                normalized_text,
+            )
+        ):
+            section = metadata_section
+        else:
+            # Do not display unsupported metadata such as
+            # "Section 5" or "Section 134" when the evidence
+            # text does not establish that reference.
+            section = None
 
         # ==========================================================
         # PAGE
         # ==============================================================
 
         page = metadata.get("page")
-
         parsed_page: int | None = None
 
         if (
@@ -534,10 +768,12 @@ class CitationService:
         if section:
             entry["section"] = section
 
-        if metadata.get("official_url"):
-            entry["url"] = metadata.get(
-                "official_url"
-            )
+        official_url = metadata.get(
+            "official_url"
+        )
+
+        if official_url:
+            entry["url"] = official_url
 
         return entry
 
@@ -552,7 +788,6 @@ class CitationService:
         """
         Remove evidence without minimum citation metadata.
         """
-
         valid: list[dict[str, Any]] = []
 
         for item in evidence:
@@ -586,8 +821,9 @@ class CitationService:
         evidence[1] -> EVIDENCE 2
         evidence[2] -> EVIDENCE 3
         """
-
-        valid = self.validate_sources(evidence)
+        valid = self.validate_sources(
+            evidence
+        )
 
         if not valid:
             return []

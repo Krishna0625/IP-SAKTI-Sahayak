@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any
 
@@ -22,6 +22,7 @@ class RAGService:
     - Prioritize relevant statutory Patent Act evidence
     - Prioritize relevant TKDL evidence
     - Prioritize relevant patent evidence for ordinary patent queries
+    - Prioritize statutory workflow evidence for patent application and grant queries
     - Store latest evidence for LLMService
     - Format citations using CitationService
     - Provide a stable answer_query() interface for LLMService
@@ -264,41 +265,56 @@ class RAGService:
     def _is_traditional_knowledge_patent_query(
         query: str,
     ) -> bool:
+        """
+        Detect patentability questions involving traditional knowledge,
+        Ayurveda, Ayurvedic medicine, or traditional medicine.
+        """
 
-        q = query.lower()
+        q = RAGService._normalize_text(query)
 
         tk_terms = (
             "traditional knowledge",
             "traditional medicine",
-            "tkdl",
             "traditional use",
             "traditionally known",
             "traditional knowledge digital library",
+            "tkdl",
+            "ayurvedic knowledge",
         )
 
         patent_terms = (
             "patent",
-            "patent application",
+            "patented",
+            "patentable",
             "patentability",
-            "invention",
+            "patent application",
+            "patent filing",
+            "patent claim",
+            "patent claims",
             "prior art",
             "novelty",
             "inventive step",
             "patent office",
             "patent examination",
             "grant of patent",
+            "get a patent",
+            "obtain a patent",
+            "apply for a patent",
+            "be patented",
         )
 
-        return (
-            any(
-                term in q
-                for term in tk_terms
-            )
-            and any(
-                term in q
-                for term in patent_terms
-            )
+        has_tk = any(
+            term in q
+            for term in tk_terms
         )
+
+        has_patent = any(
+            term in q
+            for term in patent_terms
+        )
+
+        return has_tk and has_patent
+
 
     @staticmethod
     def _is_patent_query(
@@ -334,6 +350,91 @@ class RAGService:
             for term in patent_terms
         )
 
+    @staticmethod
+    def _is_patent_workflow_query(
+        query: str,
+    ) -> bool:
+        """
+        Detect questions about obtaining, applying for, examining,
+        or receiving a patent rather than post-grant or enforcement issues.
+        """
+
+        q = query.lower()
+
+        workflow_terms = (
+            "how to get a patent",
+            "how to apply for a patent",
+            "how do i apply for a patent",
+            "how is a patent granted",
+            "how is a patent issued",
+            "how a patent is granted",
+            "how a patent is issued",
+            "patent application process",
+            "patent filing process",
+            "patent grant process",
+            "patent issuance",
+            "patent issued",
+            "patent granted",
+            "obtain a patent",
+            "getting a patent",
+            "apply for a patent",
+            "application for a patent",
+            "who can apply for a patent",
+            "eligible to apply for a patent",
+            "eligible applicant for a patent",
+            "patent examination process",
+            "request for examination",
+            "steps to get a patent",
+            "steps for getting a patent",
+
+            # Natural-language patentability questions
+            "can be patented",
+            "can i patent",
+            "can we patent",
+            "can this be patented",
+            "can this invention be patented",
+            "is this patentable",
+            "is it patentable",
+            "is patentable",
+            "patentable in india",
+            "can traditional knowledge be patented",
+            "can ayurvedic knowledge be patented",
+            "can ayurvedic medicine be patented",
+        )
+
+        subject_terms = (
+            "patent",
+            "invention",
+        )
+
+        return (
+            any(term in q for term in workflow_terms)
+            or (
+                any(term in q for term in subject_terms)
+                and any(
+                    term in q
+                    for term in (
+                        "how",
+                        "apply",
+                        "application",
+                        "file",
+                        "filing",
+                        "issue",
+                        "issued",
+                        "grant",
+                        "granted",
+                        "obtain",
+                        "obtaining",
+                        "process",
+                        "steps",
+                        "eligible",
+                        "eligibility",
+                        "who can",
+                    )
+                )
+            )
+        )
+
     # ==============================================================
     # TEXT NORMALIZATION
     # ==============================================================
@@ -351,8 +452,8 @@ class RAGService:
 
         replacements = {
             "-": " ",
-            "–": " ",
-            "—": " ",
+            "â€“": " ",
+            "â€”": " ",
             "\n": " ",
             "\r": " ",
             "\t": " ",
@@ -987,6 +1088,144 @@ class RAGService:
         return False
 
     # ==============================================================
+    # PATENT WORKFLOW EVIDENCE SCORING
+    # ==============================================================
+
+    @classmethod
+    def _patent_workflow_evidence_score(
+        cls,
+        evidence: dict[str, Any],
+        query: str,
+    ) -> float:
+        """
+        Prioritize evidence that directly supports the normal
+        patent-obtaining workflow:
+        applicant eligibility -> patentability/TK exclusions ->
+        examination -> grant.
+        """
+
+        score = cls._base_patent_score_for_workflow(evidence, query)
+
+        metadata = evidence.get("metadata") or {}
+        title = cls._normalize_text(str(metadata.get("title") or ""))
+        text = cls._normalize_text(str(evidence.get("text") or ""))
+        retrieval_query = cls._normalize_text(
+            str(evidence.get("_retrieval_query") or "")
+        )
+
+        # Strong statutory workflow anchors.
+        section_signals = (
+            (
+                (
+                    "persons entitled to apply for patents" in text
+                    or "true and first inventor" in text
+                ),
+                1.15,
+            ),
+            (
+                (
+                    "in effect is traditional knowledge" in text
+                    or "aggregation or duplication of known properties" in text
+                    or "known properties of traditionally known" in text
+                ),
+                1.05,
+            ),
+            (
+                "request for examination" in text,
+                1.00,
+            ),
+            (
+                (
+                    "grant of patents" in title
+                    or "found to be in order for grant" in text
+                    or "patent shall be granted" in text
+                ),
+                1.05,
+            ),
+        )
+
+        for matched, weight in section_signals:
+            if matched:
+                score += weight
+
+        # Retrieval-query intent should reinforce targeted statutory searches.
+        for phrase, weight in (
+            ("true and first inventor", 0.30),
+            ("section 3 p", 0.30),
+            ("traditional knowledge", 0.22),
+            ("request for examination", 0.30),
+            ("section 11b", 0.25),
+            ("grant of patent", 0.30),
+            ("section 43", 0.25),
+        ):
+            if phrase in retrieval_query:
+                score += weight
+
+        # Ayurvedic/TK workflow queries should prefer the statutory
+        # traditional-knowledge restriction over generic patent procedure.
+        query_normalized = cls._normalize_text(query)
+        if any(
+            term in query_normalized
+            for term in (
+                "ayurvedic",
+                "ayurveda",
+                "traditional knowledge",
+                "traditional medicine",
+                "tkdl",
+            )
+        ):
+            if (
+                "in effect is traditional knowledge" in text
+                or "traditionally known" in text
+                or "traditional knowledge" in text
+            ):
+                score += 0.45
+
+        return score
+
+    @classmethod
+    def _base_patent_score_for_workflow(
+        cls,
+        evidence: dict[str, Any],
+        query: str,
+    ) -> float:
+        metadata = evidence.get("metadata") or {}
+        title = cls._normalize_text(str(metadata.get("title") or ""))
+        domain = cls._normalize_text(str(metadata.get("domain") or ""))
+        text = cls._normalize_text(str(evidence.get("text") or ""))
+
+        score = float(evidence.get("score") or 0.0)
+
+        if domain == "patents":
+            score += 0.35
+
+        if "patent act" in title or "patents act" in title:
+            score += 0.30
+
+        if "government of india" in cls._normalize_text(
+            str(metadata.get("authority") or "")
+        ):
+            score += 0.05
+
+        # Retain a small semantic-overlap component without allowing
+        # long queries to overpower statutory relevance.
+        query_terms = [
+            term
+            for term in cls._normalize_text(query).split()
+            if len(term) >= 4
+        ]
+
+        matched_terms = sum(
+            1
+            for term in query_terms
+            if term in text
+        )
+
+        score += min(matched_terms * 0.025, 0.20)
+
+        return score
+
+    # ==============================================================
     # NORMAL PATENT EVIDENCE SCORING
     # ==============================================================
 
@@ -1500,6 +1739,268 @@ class RAGService:
 
         return selected[:max_results]
 
+    def _select_patent_workflow_evidence(
+        self,
+        candidates: list[dict[str, Any]],
+        query: str,
+        max_results: int = 6,
+    ) -> list[dict[str, Any]]:
+        """
+        Select a balanced set of statutory evidence for patent-obtaining
+        workflow questions.
+
+        Workflow retrieval jobs may deliberately fetch statutory anchors
+        that are not semantically close enough to the user's wording to pass
+        the normal patent-relevance filter. Preserve those explicitly
+        targeted workflow anchors so that key stages such as Section 6,
+        Section 3(p), Section 11B, Section 16, and Section 43 are not lost.
+        """
+
+        relevant = []
+
+        for item in candidates:
+            evidence_text = self._normalize_text(
+                str(item.get("text") or "")
+            )
+
+            # Form 12 is a special statutory request form under Sections
+            # 26(1) and 52(2).
+            #
+            # OCR can represent "FORM 12" in several ways, including:
+            #   "form 12"
+            #   "f o r m 12"
+            #   "f 0 r m 12"
+            #
+            # The last form is observed in the indexed OCR for page 66,
+            # where the letter "O" is recognized as the digit "0".
+            #
+            # Exclude it before relevance scoring/bucketing so that the
+            # document cannot consume the application/workflow slot merely
+            # because it contains the words "request for grant of patent".
+            is_form_12_special_request = (
+                (
+                    "form 12" in evidence_text
+                    or "f o r m 12" in evidence_text
+                    or "f 0 r m 12" in evidence_text
+                )
+                and (
+                    "request for grant of patent under section 26(1)" in evidence_text
+                    or "request for grant of patent under section 52(2)" in evidence_text
+                    or "sections 26(1) & 52(2)" in evidence_text
+                )
+            )
+
+            if is_form_12_special_request:
+                continue
+
+            # Section 3(p) is a critical statutory anchor for Ayurvedic /
+            # traditional-knowledge patent workflow questions. Preserve it
+            # before applying the generic patent relevance gate.
+            is_section_3p = any(
+                marker in evidence_text
+                for marker in (
+                    "in effect is traditional knowledge",
+                    "known properties of traditionally known",
+                    "traditionally known component",
+                    "aggregation or duplication of known properties",
+                    "section 3(p)",
+                    "section 3 p",
+                )
+            )
+
+            if is_section_3p:
+                relevant.append(item)
+                continue
+
+            if self._is_relevant_patent_evidence(
+                item,
+                query,
+            ):
+                relevant.append(item)
+
+        if not relevant:
+            return []
+
+        for item in relevant:
+            item["_final_evidence_score"] = (
+                self._patent_workflow_evidence_score(
+                    item,
+                    query,
+                )
+            )
+
+        ranked = sorted(
+            relevant,
+            key=lambda item: float(
+                item.get("_final_evidence_score") or 0.0
+            ),
+            reverse=True,
+        )
+
+        buckets = {
+            "eligibility": [],
+            "traditional_knowledge": [],
+            "application": [],
+            "examination": [],
+            "grant": [],
+            "other": [],
+        }
+
+        for item in ranked:
+            text = self._normalize_text(
+                str(item.get("text") or "")
+            )
+            title = self._normalize_text(
+                str(
+                    (item.get("metadata") or {}).get("title")
+                    or ""
+                )
+            )
+
+            # Exclude PCT / convention-application material from the core
+            # domestic patent-issuance workflow. These provisions are valid
+            # patent-law evidence but are not part of the normal workflow
+            # the user is asking about.
+            if any(
+                marker in text
+                for marker in (
+                    "patent cooperation treaty",
+                    "pct",
+                    "convention application",
+                    "convention applications",
+                    "special provisions relating to convention applications",
+                )
+            ):
+                buckets["other"].append(item)
+                continue
+
+            if (
+                "persons entitled to apply for patents" in text
+                or "true and first inventor" in text
+                or "section 6" in text
+            ):
+                buckets["eligibility"].append(item)
+
+            elif (
+                "in effect is traditional knowledge" in text
+                or "traditionally known" in text
+                or "known properties of traditionally known" in text
+                or "section 3(p)" in text
+                or "section 3 p" in text
+            ):
+                buckets["traditional_knowledge"].append(item)
+
+            elif (
+                "request for examination" in text
+                or "section 11b" in text
+            ):
+                buckets["examination"].append(item)
+
+            elif (
+                "grant of patents" in title
+                or "found to be in order for grant" in text
+                or "patent shall be granted" in text
+                or "section 43" in text
+            ):
+                buckets["grant"].append(item)
+
+            elif (
+                (
+                    "application for grant of patent" in text
+                    or "application for a patent" in text
+                    or "form 1" in text
+                    or "provisional or a complete specification" in text
+                    or "provisional/complete specification" in text
+                )
+                and "form 12" not in text
+                and "request for grant of patent under section 26(1)" not in text
+                and "request for grant of patent under section 52(2)" not in text
+            ):
+                buckets["application"].append(item)
+
+            else:
+                buckets["other"].append(item)
+
+        selected = []
+        selected_keys = set()
+
+        def evidence_key(item):
+            metadata = item.get("metadata") or {}
+            text = self._normalize_text(
+                str(item.get("text") or "")
+            )
+
+            return (
+                metadata.get("source_id"),
+                metadata.get("page"),
+                text[:300],
+            )
+
+        def add_item(item):
+            if len(selected) >= max_results:
+                return
+
+            key = evidence_key(item)
+
+            if key in selected_keys:
+                return
+
+            selected.append(item)
+            selected_keys.add(key)
+
+        # Reserve the workflow slots around the actual patent-issuance path.
+        #
+        # Target composition:
+        #   1 eligibility item
+        #   1 traditional-knowledge / Section 3(p) item
+        #   1 application/specification item
+        #   2 examination items
+        #   1 grant item
+        #
+        # This prevents unrelated PCT/convention/secrecy material from
+        # displacing the examiner evidence needed to explain the workflow.
+        bucket_limits = {
+            "eligibility": 1,
+            "traditional_knowledge": 1,
+            "application": 1,
+            "examination": 1,
+            "grant": 1,
+        }
+
+        for bucket_name in (
+            "eligibility",
+            "traditional_knowledge",
+            "application",
+            "examination",
+            "grant",
+        ):
+            added = 0
+
+            for item in buckets[bucket_name]:
+                before = len(selected)
+                add_item(item)
+
+                if len(selected) > before:
+                    added += 1
+
+                if added >= bucket_limits[bucket_name]:
+                    break
+
+                if len(selected) >= max_results:
+                    break
+
+            if len(selected) >= max_results:
+                break
+
+        # Do not fill remaining workflow slots with generic "other" patent
+        # evidence. For statutory workflow questions, a smaller set of
+        # directly relevant anchors is preferable to unrelated material.
+
+        for item in selected:
+            item.pop("_final_evidence_score", None)
+
+        return selected[:max_results]
+
     def _select_multi_domain_evidence(
         self,
         candidates: list[dict[str, Any]],
@@ -1731,46 +2232,79 @@ class RAGService:
                 if selected_domain == "gi":
                     retrieval_jobs.extend(
                         [
-                            (query, "gi"),
                             (
-                                f"{query} geographical indication GI Act India",
+                                query,
+                                "gi",
+                            ),
+                            (
+                                f"{query} geographical indication definition GI Act India",
+                                "gi",
+                            ),
+                            (
+                                "geographical indication definition meaning "
+                                "GI Act 1999 India",
                                 "gi",
                             ),
                         ]
                     )
+
                 elif selected_domain == "trademarks":
                     retrieval_jobs.extend(
                         [
-                            (query, "trademarks"),
-                            (f"{query} trademark India", "trademarks"),
+                            (
+                                query,
+                                "trademarks",
+                            ),
+                            (
+                                f"{query} trademark definition Trade Marks Act India",
+                                "trademarks",
+                            ),
+                            (
+                                "trade mark definition meaning "
+                                "Trade Marks Act 1999 India",
+                                "trademarks",
+                            ),
                         ]
                     )
+
                 elif selected_domain == "tk":
                     retrieval_jobs.extend(
                         [
-                            (query, "tk"),
+                            (
+                                query,
+                                "tk",
+                            ),
                             (
                                 "traditional knowledge TKDL prior art India",
                                 "tk",
                             ),
                         ]
                     )
+
                 elif selected_domain == "abs":
                     retrieval_jobs.extend(
                         [
-                            (query, "abs"),
+                            (
+                                query,
+                                "abs",
+                            ),
                             (
                                 "biological resources access benefit sharing India requirements",
                                 "abs",
                             ),
                         ]
                     )
+
                 elif selected_domain == "biodiversity":
                     retrieval_jobs.extend(
                         [
-                            (query, "biodiversity"),
                             (
-                                "National Biodiversity Authority biological resources benefit sharing India",
+                                query,
+                                "biodiversity",
+                            ),
+                            (
+                                "National Biodiversity Authority biological resources "
+                                "benefit sharing India",
                                 "biodiversity",
                             ),
                         ]
@@ -1843,20 +2377,60 @@ class RAGService:
 
         elif is_patent_query or domain == "patents":
 
-            retrieval_jobs = [
-                (
-                    query,
-                    "patents",
-                ),
-                (
-                    f"{query} patentability prior art novelty",
-                    "patents",
-                ),
-                (
-                    f"{query} inventive step patent examination",
-                    "patents",
-                ),
-            ]
+            is_patent_workflow = self._is_patent_workflow_query(
+                query
+            )
+
+            if is_patent_workflow:
+                retrieval_jobs = [
+                    (
+                        query,
+                        "patents",
+                    ),
+                    (
+                        "patent application true and first inventor India",
+                        "patents",
+                    ),
+                    (
+                        "patent application who can apply section 6 India",
+                        "patents",
+                    ),
+                    (
+                        "Section 3(p) traditional knowledge patent India",
+                        "patents",
+                    ),
+                    (
+                        "an invention which in effect is traditional knowledge",
+                        "patents",
+                    ),
+                    (
+                        "aggregation or duplication of known properties of traditionally known component",
+                        "patents",
+                    ),
+                    (
+                        "request for examination section 11B patent India",
+                        "patents",
+                    ),
+                    (
+                        "grant of patent section 43 India application in order",
+                        "patents",
+                    ),
+                ]
+            else:
+                retrieval_jobs = [
+                    (
+                        query,
+                        "patents",
+                    ),
+                    (
+                        f"{query} patentability prior art novelty",
+                        "patents",
+                    ),
+                    (
+                        f"{query} inventive step patent examination",
+                        "patents",
+                    ),
+                ]
 
             query_normalized = self._normalize_text(
                 query
@@ -2114,19 +2688,34 @@ class RAGService:
 
             elif is_patent_query:
 
-                existing_score = (
-                    self._patent_evidence_score(
-                        existing,
-                        query,
+                if self._is_patent_workflow_query(query):
+                    existing_score = (
+                        self._patent_workflow_evidence_score(
+                            existing,
+                            query,
+                        )
                     )
-                )
 
-                new_score = (
-                    self._patent_evidence_score(
-                        item,
-                        query,
+                    new_score = (
+                        self._patent_workflow_evidence_score(
+                            item,
+                            query,
+                        )
                     )
-                )
+                else:
+                    existing_score = (
+                        self._patent_evidence_score(
+                            existing,
+                            query,
+                        )
+                    )
+
+                    new_score = (
+                        self._patent_evidence_score(
+                            item,
+                            query,
+                        )
+                    )
 
             else:
 
@@ -2151,15 +2740,27 @@ class RAGService:
         # GENERAL RANKING
         # ==============================================================
 
+        is_patent_workflow = self._is_patent_workflow_query(
+            query
+        )
+
         for item in candidates:
 
-            item["_ranking_score"] = (
-                self._general_ranking_score(
-                    item,
-                    query,
-                    is_tk_patent_query,
+            if is_patent_workflow:
+                item["_ranking_score"] = (
+                    self._patent_workflow_evidence_score(
+                        item,
+                        query,
+                    )
                 )
-            )
+            else:
+                item["_ranking_score"] = (
+                    self._general_ranking_score(
+                        item,
+                        query,
+                        is_tk_patent_query,
+                    )
+                )
 
         candidates.sort(
             key=lambda item: float(
@@ -2194,15 +2795,24 @@ class RAGService:
                 )
             )
 
-        elif is_patent_query:
+        elif is_patent_query or domain == "patents":
 
-            final_results = (
-                self._select_patent_evidence(
-                    candidates=candidates,
-                    query=query,
-                    max_results=4,
+            if self._is_patent_workflow_query(query):
+                final_results = (
+                    self._select_patent_workflow_evidence(
+                        candidates=candidates,
+                        query=query,
+                        max_results=6,
+                    )
                 )
-            )
+            else:
+                final_results = (
+                    self._select_patent_evidence(
+                        candidates=candidates,
+                        query=query,
+                        max_results=4,
+                    )
+                )
 
         else:
 
@@ -2546,6 +3156,42 @@ class RAGService:
             query
         ):
 
+            if self._is_patent_workflow_query(query):
+                workflow_text = evidence_text
+                has_eligibility = any(
+                    "true and first inventor" in item
+                    or "persons entitled to apply for patents" in item
+                    for item in workflow_text
+                )
+                has_examination = any(
+                    "request for examination" in item
+                    for item in workflow_text
+                )
+                has_grant = any(
+                    "found to be in order for grant" in item
+                    or "patent shall be granted" in item
+                    for item in workflow_text
+                )
+                has_tk_guard = any(
+                    "in effect is traditional knowledge" in item
+                    or "traditionally known" in item
+                    for item in workflow_text
+                )
+
+                workflow_anchor_count = sum(
+                    (
+                        has_eligibility,
+                        has_examination,
+                        has_grant,
+                        has_tk_guard,
+                    )
+                )
+
+                confidence += min(
+                    workflow_anchor_count * 0.04,
+                    0.16,
+                )
+
             patent_evidence_count = sum(
                 1
                 for item in evidence
@@ -2574,6 +3220,222 @@ class RAGService:
         )
 
         # ==========================================================
+        # ==========================================================
+        # PATENT WORKFLOW ANSWER
+        # ==========================================================
+
+        if (
+            self._is_patent_workflow_query(query)
+            and not self._is_traditional_knowledge_patent_query(query)
+        ):
+
+            workflow_text = evidence_text
+
+            has_eligibility = any(
+                "persons entitled to apply for patents" in item
+                or "true and first inventor" in item
+                or "assignee of the person claiming to be the true and first inventor" in item
+                or "legal representative of any deceased person" in item
+                for item in workflow_text
+            )
+
+            # Section 6 evidence can be split across
+            # multiple retrieved chunks/pages. Therefore the
+            # three statutory categories must NOT be required
+            # to occur in the same evidence item.
+            has_section6_inventor = any(
+                "true and first inventor" in item
+                for item in workflow_text
+            )
+
+            has_section6_assignee = any(
+                "assignee of the person claiming to be the true and first inventor"
+                in item
+                for item in workflow_text
+            )
+
+            has_section6_legal_representative = any(
+                "legal representative of any deceased person" in item
+                for item in workflow_text
+            )
+
+            has_section6_categories = (
+                has_section6_inventor
+                or has_section6_assignee
+                or has_section6_legal_representative
+            )
+
+            has_tk_guard = any(
+                "in effect is traditional knowledge" in item
+                or "traditionally known" in item
+                or "known properties of traditionally known" in item
+                for item in workflow_text
+            )
+
+            has_examination = any(
+                "request for examination" in item
+                or "application shall be examined" in item
+                for item in workflow_text
+            )
+
+            has_examiner = any(
+                "examiner" in item
+                and (
+                    "investigation" in item
+                    or "ascertaining whether" in item
+                )
+                for item in workflow_text
+            )
+
+            has_grant = any(
+                "found to be in order for grant" in item
+                or "patent shall be granted" in item
+                or "grant of patents" in item
+                for item in workflow_text
+            )
+
+            query_normalized = self._normalize_text(query)
+
+            is_ayurvedic = any(
+                term in query_normalized
+                for term in (
+                    "ayurvedic",
+                    "ayurveda",
+                    
+                )
+            )
+
+            answer_parts = []
+
+            if is_ayurvedic:
+                answer_parts.append(
+                    "For an Ayurvedic practitioner, being an Ayurvedic "
+                    "practitioner by itself does not determine whether "
+                    "a patent will be granted. The practitioner may apply "
+                    "if the practitioner is legally entitled to apply "
+                    "under the Patents Act, and the claimed invention "
+                    "must satisfy the applicable patent requirements."
+                )
+
+            if has_eligibility or (
+                is_ayurvedic and has_section6_categories
+            ):
+                if has_section6_categories:
+                    answer_parts.append(
+                        "Under Section 6 of the Patents Act, an application "
+                        "may be made by the true and first inventor, by an "
+                        "assignee of the person claiming to be the true and "
+                        "first inventor in respect of the right to make the "
+                        "application, or by the legal representative of a "
+                        "deceased person who was entitled to make the "
+                        "application. These applicants may apply alone or "
+                        "jointly with another person."
+                    )
+                else:
+                    answer_parts.append(
+                        "The applicant must be a person entitled to "
+                        "apply for a patent. The cited Patent Act evidence "
+                        "identifies the true and first inventor and persons "
+                        "deriving the right to apply from that inventor."
+                    )
+
+            if is_ayurvedic and has_tk_guard:
+                answer_parts.append(
+                    "For Ayurvedic or traditional-knowledge subject "
+                    "matter, Section 3(p) is particularly important. "
+                    "The cited Act excludes an invention which, in "
+                    "effect, is traditional knowledge, as well as an "
+                    "aggregation or duplication of known properties "
+                    "of traditionally known components. A genuinely "
+                    "new invention must still satisfy the other "
+                    "applicable patentability requirements."
+                )
+
+            if has_examination:
+                answer_parts.append(
+                    "After the application is filed, a request for "
+                    "examination is required within the applicable "
+                    "prescribed period. The cited evidence identifies "
+                    "this requirement under Section 11B."
+                )
+
+            if has_examiner:
+                answer_parts.append(
+                    "The examiner then investigates the application "
+                    "against the applicable patent requirements and "
+                    "prior-art provisions."
+                )
+
+            if has_grant:
+                answer_parts.append(
+                    "If the application is found to be in order for "
+                    "grant, is not refused, and is not in contravention "
+                    "of the applicable provisions, the patent is granted "
+                    "under the cited grant provision."
+                )
+
+            if len(answer_parts) == 1:
+                answer_parts.append(
+                    "The available evidence supports reviewing the "
+                    "patent application, examination, and grant "
+                    "requirements before determining whether the "
+                    "claimed invention can receive a patent."
+                )
+
+            key_points = []
+
+            if has_eligibility or (
+                is_ayurvedic and has_section6_categories
+            ):
+                if has_section6_categories:
+                    key_points.append(
+                        "Section 6 permits application by the true and "
+                        "first inventor, an eligible assignee, or the "
+                        "legal representative of a deceased entitled person."
+                    )
+                else:
+                    key_points.append(
+                        "Confirm that the applicant is entitled to apply "
+                        "for the patent."
+                    )
+
+            if is_ayurvedic and has_tk_guard:
+                key_points.append(
+                    "Check Section 3(p) carefully where the claimed "
+                    "subject matter involves Ayurvedic or traditional "
+                    "knowledge."
+                )
+                key_points.append(
+                    "Traditional knowledge itself, or duplication of "
+                    "known properties of traditionally known "
+                    "components, may be excluded from patentability."
+                )
+
+            if has_examination:
+                key_points.append(
+                    "A request for examination is part of the "
+                    "patent-obtaining process."
+                )
+
+            if has_examiner:
+                key_points.append(
+                    "The examiner investigates the claimed invention "
+                    "against the applicable patent requirements."
+                )
+
+            if has_grant:
+                key_points.append(
+                    "Grant follows when the application is found "
+                    "to be in order and is not refused or otherwise "
+                    "in contravention of the Act."
+                )
+
+            return {
+                "answer": " ".join(answer_parts),
+                "confidence": round(confidence, 2),
+                "key_points": key_points,
+            }
+
         # TK + PATENT FALLBACK
         # ==============================================================
 
@@ -2682,3 +3544,4 @@ class RAGService:
             ),
             "key_points": key_points,
         }
+

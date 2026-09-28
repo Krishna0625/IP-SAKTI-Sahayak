@@ -16,32 +16,21 @@ class ChatRequest(BaseModel):
 
     @field_validator("jurisdiction")
     @classmethod
-    def validate_jurisdiction(
-        cls,
-        value: str,
-    ) -> str:
-
+    def validate_jurisdiction(cls, value: str) -> str:
         allowed = {
             "india",
             "international",
         }
-
         normalized = value.lower()
-
         if normalized not in allowed:
             raise ValueError(
                 'jurisdiction must be either "india" or "international"'
             )
-
         return normalized
 
     @field_validator("language")
     @classmethod
-    def validate_language(
-        cls,
-        value: str,
-    ) -> str:
-
+    def validate_language(cls, value: str) -> str:
         valid = {
             "en",
             "hi",
@@ -55,30 +44,19 @@ class ChatRequest(BaseModel):
             "or",
             "pa",
         }
-
         normalized = value.lower()
-
         if normalized not in valid:
             raise ValueError(
                 "language is not supported for this prototype"
             )
-
         return normalized
 
     @field_validator("query")
     @classmethod
-    def validate_query(
-        cls,
-        value: str,
-    ) -> str:
-
+    def validate_query(cls, value: str) -> str:
         stripped = value.strip()
-
         if not stripped:
-            raise ValueError(
-                "query must not be empty"
-            )
-
+            raise ValueError("query must not be empty")
         return stripped
 
 
@@ -88,3 +66,11 @@ class ChatResponse(BaseModel):
     key_points: list[str]
     sources: list[dict[str, Any]]
     disclaimer: str
+    generation_status: Literal[
+        "gemini",
+        "gemini_fallback",
+        "evidence_fallback",
+        "rag_only",
+    ] = "rag_only"
+    generation_model: str | None = None
+    generation_note: str | None = None
